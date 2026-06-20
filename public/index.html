@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0A0818" />
+    <meta name="description" content="MindBridge — AI Mental Wellness Companion. Available 24/7." />
+    <title>MindBridge AI</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: #0A0818; color: #F1F5F9; font-family: system-ui, sans-serif; }
+      #root { min-height: 100vh; }
+      #loading {
+        position: fixed; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; background: #0A0818; z-index: 9999;
+        transition: opacity 0.4s;
+      }
+      .orb {
+        width: 80px; height: 80px; border-radius: 50%;
+        background: radial-gradient(circle at 35% 40%, #7C3AED, #4F46E5 50%, #2DD4BF);
+        animation: pulse 2s ease-in-out infinite;
+        margin-bottom: 20px;
+      }
+      @keyframes pulse {
+        0%,100% { transform: scale(1); opacity: 0.85; }
+        50%      { transform: scale(1.1); opacity: 1; }
+      }
+      #loading p { color: #2DD4BF; font-size: 14px; letter-spacing: 0.15em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <div id="loading">
+      <div class="orb"></div>
+      <p>MindBridge</p>
+    </div>
+    <div id="root"></div>
+    <script>
+      // Hide loading screen once React mounts
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          var l = document.getElementById('loading');
+          if (l) { l.style.opacity = '0'; setTimeout(function(){ l.remove(); }, 400); }
+        }, 300);
+      });
+    </script>
+  </body>
+</html>

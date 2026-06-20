@@ -1,0 +1,56 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/v1/**",
+        "function": "mindbridge"
+      },
+      {
+        "source": "/admin/**",
+        "function": "mindbridge"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/api/v1/**",
+        "headers": [
+          { "key": "Access-Control-Allow-Origin",  "value": "*" },
+          { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,OPTIONS" },
+          { "key": "Access-Control-Allow-Headers", "value": "Authorization,Content-Type" }
+        ]
+      },
+      {
+        "source": "/static/**",
+        "headers": [
+          { "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }
+        ]
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "mindbridge",
+      "runtime": "python312",
+      "ignore": [
+        "venv",
+        ".git",
+        "__pycache__",
+        "*.pyc",
+        ".env",
+        "staticfiles",
+        "mediafiles"
+      ]
+    }
+  ]
+}

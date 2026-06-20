@@ -1,0 +1,21 @@
+# Python
+*.pyc
+__pycache__/
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+staticfiles/
+mediafiles/
+*.log
+.DS_Store
+
+# Firebase
+.firebase/
+firebase-sa.json
+/tmp/sa.json
+
+# Frontend
+frontend/node_modules/
+frontend/build/

@@ -1,0 +1,140 @@
+name: MindBridge CI/CD → Firebase
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # 1. LINT
+  # ─────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (flake8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install flake8
+      - run: flake8 functions/ --max-line-length=120 --exclude=migrations,venv,__pycache__
+
+  # ─────────────────────────────────────────────────────────────
+  # 2. TEST
+  # ─────────────────────────────────────────────────────────────
+  test:
+    name: Tests (Neon PostgreSQL)
+    runs-on: ubuntu-latest
+    needs: lint
+
+    env:
+      SECRET_KEY:        ${{ secrets.SECRET_KEY }}
+      DEBUG:             'True'
+      DB_NAME:           ${{ secrets.DB_NAME }}
+      DB_USER:           ${{ secrets.DB_USER }}
+      DB_PASSWORD:       ${{ secrets.DB_PASSWORD }}
+      DB_HOST:           ${{ secrets.DB_HOST }}
+      DB_PORT:           '5432'
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ENABLE_FACE_SCAN:  'false'
+      ENABLE_RAG:        'false'
+      DJANGO_SETTINGS_MODULE: config.settings
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r functions/requirements.txt
+      - name: Run migrations
+        working-directory: functions
+        run: python manage.py migrate
+      - name: Run tests
+        working-directory: functions
+        run: python manage.py test --verbosity=2
+
+  # ─────────────────────────────────────────────────────────────
+  # 3. BUILD REACT FRONTEND
+  # ─────────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install & build
+        working-directory: frontend
+        run: |
+          npm install
+          REACT_APP_API_URL=https://us-central1-mindbridge-noel.cloudfunctions.net/mindbridge \
+          npm run build
+      - name: Copy build to public/
+        run: |
+          cp -r frontend/build/static public/
+          cp frontend/build/index.html public/index.html
+      - name: Upload public folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-build
+          path: public/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────
+  # 4. DEPLOY TO FIREBASE (main only)
+  # ─────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy → Firebase
+    runs-on: ubuntu-latest
+    needs: [test, build-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://mindbridge-noel.web.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: public-build
+          path: public/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Write service account
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
+
+      - name: Set environment variables for Function
+        run: |
+          npx firebase-tools functions:secrets:set DB_NAME --data "${{ secrets.DB_NAME }}" --project mindbridge-noel
+          npx firebase-tools functions:secrets:set DB_USER --data "${{ secrets.DB_USER }}" --project mindbridge-noel
+          npx firebase-tools functions:secrets:set DB_PASSWORD --data "${{ secrets.DB_PASSWORD }}" --project mindbridge-noel
+          npx firebase-tools functions:secrets:set DB_HOST --data "${{ secrets.DB_HOST }}" --project mindbridge-noel
+          npx firebase-tools functions:secrets:set SECRET_KEY --data "${{ secrets.SECRET_KEY }}" --project mindbridge-noel
+          npx firebase-tools functions:secrets:set ANTHROPIC_API_KEY --data "${{ secrets.ANTHROPIC_API_KEY }}" --project mindbridge-noel
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+
+      - name: Deploy to Firebase
+        run: firebase deploy --only functions,hosting --project mindbridge-noel
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/sa.json
