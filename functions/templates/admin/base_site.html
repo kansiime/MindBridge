@@ -1,0 +1,389 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}MindBridge Admin{% endblock %}
+
+{% block branding %}
+<div id="site-name">
+  <a href="{% url 'admin:index' %}">
+    <span style="font-size:22px;">🧠</span>
+    <strong>MindBridge</strong>
+    <span style="font-size:12px;opacity:0.6;font-weight:400;margin-left:4px;">Admin</span>
+  </a>
+</div>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --primary: #7C3AED;
+    --primary-dark: #5B21B6;
+    --aqua: #2DD4BF;
+    --bg: #0A0818;
+    --surface: #13102A;
+    --surface2: #1E1B4B;
+    --border: rgba(124,58,237,0.2);
+    --text: #F1F5F9;
+    --muted: #94A3B8;
+    --success: #10B981;
+    --danger: #EF4444;
+  }
+
+  * { font-family: 'Inter', system-ui, sans-serif !important; }
+
+  body {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+  }
+
+  /* ── HEADER ── */
+  #header {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+    padding: 0 24px !important;
+    height: 56px !important;
+    display: flex !important;
+    align-items: center !important;
+    box-shadow: 0 2px 20px rgba(124,58,237,0.4) !important;
+    border-bottom: none !important;
+  }
+
+  #site-name a {
+    color: #fff !important;
+    font-weight: 700 !important;
+    font-size: 18px !important;
+    text-decoration: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  #user-tools {
+    color: rgba(255,255,255,0.8) !important;
+    font-size: 13px !important;
+  }
+
+  #user-tools a {
+    color: #fff !important;
+    border-bottom: 1px solid rgba(255,255,255,0.3) !important;
+  }
+
+  /* ── NAV ── */
+  #nav-sidebar {
+    background: var(--surface) !important;
+    border-right: 1px solid var(--border) !important;
+  }
+
+  .module caption, #nav-sidebar .current-app .section:link,
+  #nav-sidebar .current-app .section:visited {
+    background: var(--primary) !important;
+    color: #fff !important;
+    border-radius: 8px !important;
+    padding: 6px 12px !important;
+  }
+
+  /* ── CONTENT ── */
+  #content {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+  }
+
+  #content-main { color: var(--text) !important; }
+
+  h1, h2, h3 { color: var(--text) !important; }
+
+  /* ── BREADCRUMBS ── */
+  div.breadcrumbs {
+    background: var(--surface) !important;
+    color: var(--muted) !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 10px 24px !important;
+    font-size: 13px !important;
+  }
+
+  div.breadcrumbs a { color: var(--aqua) !important; }
+
+  /* ── MODULES / CARDS ── */
+  .module {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+    margin-bottom: 20px !important;
+  }
+
+  .module caption {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+    color: #fff !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.05em !important;
+    padding: 10px 16px !important;
+    text-transform: uppercase !important;
+  }
+
+  .module table { border-collapse: collapse !important; }
+
+  .module tr:hover td { background: rgba(124,58,237,0.08) !important; }
+
+  .module td, .module th {
+    border-bottom: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    padding: 10px 16px !important;
+  }
+
+  .module td a { color: var(--aqua) !important; }
+  .module td a:hover { color: #fff !important; }
+
+  /* ── BUTTONS ── */
+  .button, input[type=submit], input[type=button], .submit-row input, a.button {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 9px 18px !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    box-shadow: 0 0 16px rgba(124,58,237,0.3) !important;
+    transition: opacity 0.2s !important;
+  }
+
+  .button:hover, input[type=submit]:hover { opacity: 0.85 !important; }
+
+  .button.default { background: linear-gradient(135deg, var(--aqua), #0D9488) !important; }
+
+  .deletelink, a.deletelink {
+    background: var(--danger) !important;
+    box-shadow: 0 0 12px rgba(239,68,68,0.3) !important;
+  }
+
+  /* ── LOGIN PAGE ── */
+  body.login {
+    background: radial-gradient(ellipse at 50% 30%, #1E1B4B, var(--bg) 70%) !important;
+  }
+
+  #container {
+    background: transparent !important;
+  }
+
+  #content-main {
+    background: transparent !important;
+  }
+
+  .login #content {
+    background: transparent !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 100vh !important;
+    padding: 32px !important;
+  }
+
+  .login #header {
+    display: none !important;
+  }
+
+  .login .login-form-container,
+  #login-form {
+    background: rgba(255,255,255,0.05) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 20px !important;
+    padding: 36px !important;
+    width: 100% !important;
+    max-width: 400px !important;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5) !important;
+  }
+
+  .login h1 {
+    text-align: center !important;
+    font-size: 24px !important;
+    color: var(--text) !important;
+    margin-bottom: 8px !important;
+  }
+
+  .login h1 a {
+    color: var(--text) !important;
+    text-decoration: none !important;
+  }
+
+  .login p.errornote {
+    background: rgba(239,68,68,0.12) !important;
+    border: 1px solid rgba(239,68,68,0.25) !important;
+    border-radius: 10px !important;
+    color: #FCA5A5 !important;
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+
+  .login label {
+    color: var(--muted) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+  }
+
+  .login input[type=text],
+  .login input[type=password],
+  .login input[type=email] {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 10px !important;
+    color: var(--text) !important;
+    padding: 11px 16px !important;
+    font-size: 14px !important;
+    width: 100% !important;
+    outline: none !important;
+    transition: border-color 0.2s !important;
+  }
+
+  .login input[type=text]:focus,
+  .login input[type=password]:focus {
+    border-color: var(--primary) !important;
+  }
+
+  .login .submit-row,
+  #login-form > div:last-child {
+    margin-top: 20px !important;
+  }
+
+  /* ── FORMS ── */
+  .form-row {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 12px 0 !important;
+  }
+
+  input[type=text], input[type=password], input[type=email],
+  input[type=number], textarea, select {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+    color: var(--text) !important;
+    padding: 8px 12px !important;
+  }
+
+  label { color: var(--muted) !important; }
+
+  .help { color: var(--muted) !important; font-size: 12px !important; }
+
+  /* ── TABLES ── */
+  #result_list {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+  }
+
+  #result_list thead th {
+    background: var(--surface2) !important;
+    color: var(--muted) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 12px 16px !important;
+  }
+
+  #result_list thead th a { color: var(--muted) !important; }
+  #result_list thead th.sorted a { color: var(--aqua) !important; }
+
+  #result_list tbody tr:hover { background: rgba(124,58,237,0.07) !important; }
+
+  #result_list tbody td, #result_list tbody th {
+    border-bottom: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    padding: 12px 16px !important;
+  }
+
+  #result_list tbody td a { color: var(--aqua) !important; }
+
+  /* ── SUBMIT ROW ── */
+  .submit-row {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    margin-top: 16px !important;
+    display: flex !important;
+    gap: 10px !important;
+    align-items: center !important;
+  }
+
+  /* ── MESSAGES ── */
+  .messagelist li {
+    border-radius: 8px !important;
+    padding: 10px 16px !important;
+    font-size: 13px !important;
+  }
+
+  .messagelist .success {
+    background: rgba(16,185,129,0.12) !important;
+    border: 1px solid rgba(16,185,129,0.25) !important;
+    color: #6EE7B7 !important;
+  }
+
+  .messagelist .error {
+    background: rgba(239,68,68,0.12) !important;
+    border: 1px solid rgba(239,68,68,0.25) !important;
+    color: #FCA5A5 !important;
+  }
+
+  /* ── SIDEBAR FILTERS ── */
+  #changelist-filter {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+  }
+
+  #changelist-filter h2 {
+    color: var(--muted) !important;
+    font-size: 11px !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+    margin-bottom: 10px !important;
+  }
+
+  #changelist-filter li a {
+    color: var(--aqua) !important;
+    font-size: 13px !important;
+  }
+
+  #changelist-filter li.selected a { color: #fff !important; font-weight: 600 !important; }
+
+  /* ── PAGINATION ── */
+  .paginator { color: var(--muted) !important; }
+  .paginator a { color: var(--aqua) !important; }
+  .paginator .this-page {
+    background: var(--primary) !important;
+    color: #fff !important;
+    border-radius: 6px !important;
+    padding: 2px 8px !important;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 2px; }
+</style>
+
+<script>
+  // Add logo/tagline to login page
+  document.addEventListener('DOMContentLoaded', function() {
+    var loginForm = document.getElementById('login-form') || document.querySelector('.login #content-main');
+    if (loginForm && document.body.classList.contains('login')) {
+      var logo = document.createElement('div');
+      logo.innerHTML = '<div style="text-align:center;margin-bottom:28px"><div style="font-size:48px;margin-bottom:8px">🧠</div><h1 style="color:#F1F5F9;font-size:26px;font-weight:800;margin:0;font-family:Georgia,serif">Mind<span style=\'color:#2DD4BF\'>Bridge</span></h1><p style="color:#64748B;font-size:13px;margin-top:6px">Admin Dashboard</p></div>';
+      loginForm.insertBefore(logo, loginForm.firstChild);
+    }
+  });
+</script>
+{% endblock %}
