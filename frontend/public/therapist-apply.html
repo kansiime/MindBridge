@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Join as a Therapist — MindBridge</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#0A0818;color:#F1F5F9;font-family:system-ui,sans-serif;min-height:100vh;}
+    a{color:#2DD4BF;}
+
+    .hero{background:linear-gradient(135deg,#1E1B4B,#0A0818);padding:40px 24px 32px;text-align:center;border-bottom:1px solid rgba(124,58,237,0.2);}
+    .orb{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 35% 40%,#7C3AED,#4F46E5 50%,#2DD4BF);margin:0 auto 16px;animation:pulse 3s ease-in-out infinite;}
+    @keyframes pulse{0%,100%{transform:scale(1);opacity:.85;}50%{transform:scale(1.08);opacity:1;}}
+    .logo{font-size:28px;font-weight:800;font-family:Georgia,serif;margin-bottom:6px;}
+    .logo span{color:#2DD4BF;}
+    .tagline{color:#64748B;font-size:14px;}
+
+    .container{max-width:620px;margin:0 auto;padding:32px 20px 60px;}
+
+    h2{font-size:22px;font-weight:700;margin-bottom:6px;font-family:Georgia,serif;}
+    .subtitle{color:#64748B;font-size:14px;margin-bottom:28px;line-height:1.6;}
+
+    .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:20px;}
+    .card-title{font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#2DD4BF;margin-bottom:16px;}
+
+    .field{margin-bottom:16px;}
+    label{display:block;font-size:12px;font-weight:600;color:#94A3B8;margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase;}
+    input,textarea,select{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:11px 14px;font-size:14px;color:#F1F5F9;outline:none;font-family:system-ui,sans-serif;transition:border-color .2s;}
+    input:focus,textarea:focus,select:focus{border-color:#7C3AED;}
+    textarea{resize:vertical;min-height:90px;}
+    select option{background:#1E1B4B;color:#F1F5F9;}
+
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    @media(max-width:480px){.grid-2{grid-template-columns:1fr;}}
+
+    .specializations{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
+    .spec-chip{padding:6px 12px;border-radius:50px;border:1px solid rgba(255,255,255,0.1);font-size:12px;color:#94A3B8;cursor:pointer;transition:all .15s;user-select:none;}
+    .spec-chip.selected{background:rgba(124,58,237,0.2);border-color:#7C3AED;color:#A78BFA;font-weight:600;}
+
+    .btn{width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 0 24px rgba(124,58,237,0.35);transition:opacity .2s;margin-top:8px;}
+    .btn:hover{opacity:.9;}
+    .btn:disabled{opacity:.5;cursor:default;}
+
+    .success{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:24px;text-align:center;display:none;}
+    .success .icon{font-size:48px;margin-bottom:12px;}
+    .success h3{color:#6EE7B7;font-size:20px;margin-bottom:8px;}
+    .success p{color:#64748B;font-size:14px;line-height:1.6;}
+
+    .error-box{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px 16px;color:#FCA5A5;font-size:13px;margin-bottom:16px;display:none;}
+
+    .note{background:rgba(45,212,191,0.06);border:1px solid rgba(45,212,191,0.15);border-radius:10px;padding:12px 16px;font-size:13px;color:#64748B;line-height:1.6;margin-bottom:24px;}
+    .note strong{color:#2DD4BF;}
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="orb"></div>
+  <div class="logo">Mind<span>Bridge</span></div>
+  <div class="tagline">AI-powered mental wellness · Uganda</div>
+</div>
+
+<div class="container">
+  <h2>Join as a Therapist</h2>
+  <p class="subtitle">Apply to be part of the MindBridge therapist network. You'll be matched with users who need human support beyond what the AI can provide.</p>
+
+  <div class="note">
+    <strong>How it works:</strong> After submitting this form, our team reviews your application within 48 hours.
+    Once approved, you'll receive login credentials and appear in the therapist directory.
+    Users will be able to connect with you via WhatsApp when the AI detects they need human support.
+  </div>
+
+  <div id="error-box" class="error-box"></div>
+
+  <form id="apply-form">
+
+    <!-- Personal Info -->
+    <div class="card">
+      <div class="card-title">Personal Information</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Title</label>
+          <select name="title">
+            <option value="">Select...</option>
+            <option>Dr.</option>
+            <option>Mr.</option>
+            <option>Ms.</option>
+            <option>Mrs.</option>
+            <option>Prof.</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Full Name *</label>
+          <input type="text" name="full_name" required placeholder="Your full name"/>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Email Address *</label>
+          <input type="email" name="email" required placeholder="you@example.com"/>
+        </div>
+        <div class="field">
+          <label>Phone Number *</label>
+          <input type="tel" name="phone" required placeholder="+256 7XX XXX XXX"/>
+        </div>
+      </div>
+      <div class="field">
+        <label>WhatsApp Number * <span style="color:#64748B;font-weight:400;text-transform:none">(Users will contact you here)</span></label>
+        <input type="tel" name="whatsapp_number" required placeholder="+256 7XX XXX XXX"/>
+      </div>
+    </div>
+
+    <!-- Professional Info -->
+    <div class="card">
+      <div class="card-title">Professional Background</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Years of Experience *</label>
+          <input type="number" name="years_experience" required min="0" max="50" placeholder="e.g. 5"/>
+        </div>
+      </div>
+      <div class="field">
+        <label>Credentials & Qualifications *</label>
+        <textarea name="credentials" required placeholder="e.g. MSc Clinical Psychology (MUK), Licensed Counselor Uganda Counselling Association, CBT Certified..."></textarea>
+      </div>
+      <div class="field">
+        <label>Professional Bio *</label>
+        <textarea name="bio" required placeholder="Describe your background, approach to therapy, and what clients can expect when working with you..."></textarea>
+      </div>
+    </div>
+
+    <!-- Specializations -->
+    <div class="card">
+      <div class="card-title">Areas of Specialization *</div>
+      <p style="color:#64748B;font-size:13px;margin-bottom:12px;">Select all that apply. Users will be matched to you based on these.</p>
+      <div class="specializations" id="spec-chips">
+        <div class="spec-chip" data-value="anxiety">Anxiety & Panic</div>
+        <div class="spec-chip" data-value="depression">Depression & Mood</div>
+        <div class="spec-chip" data-value="trauma">Trauma & PTSD</div>
+        <div class="spec-chip" data-value="grief">Grief & Loss</div>
+        <div class="spec-chip" data-value="burnout">Burnout & Stress</div>
+        <div class="spec-chip" data-value="adhd">ADHD Support</div>
+        <div class="spec-chip" data-value="recovery">Addiction & Recovery</div>
+        <div class="spec-chip" data-value="sleep">Sleep Disorders</div>
+        <div class="spec-chip" data-value="postpartum">Perinatal Mental Health</div>
+        <div class="spec-chip" data-value="social">Social Anxiety</div>
+        <div class="spec-chip" data-value="general">General Mental Health</div>
+      </div>
+    </div>
+
+    <!-- Motivation -->
+    <div class="card">
+      <div class="card-title">Why MindBridge?</div>
+      <div class="field">
+        <label>Why do you want to join MindBridge? *</label>
+        <textarea name="motivation" required placeholder="Tell us why you want to be part of MindBridge and how you'd like to support users..."></textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="btn" id="submit-btn">Submit Application →</button>
+    <p style="text-align:center;color:#334155;font-size:12px;margin-top:12px;">By applying you agree to maintain professional ethics and confidentiality standards.</p>
+
+  </form>
+
+  <!-- Success -->
+  <div class="success" id="success">
+    <div class="icon">🎉</div>
+    <h3>Application Submitted!</h3>
+    <p>Thank you for applying to join MindBridge. Our team will review your application within <strong style="color:#F1F5F9">48 hours</strong> and contact you at the email you provided.<br/><br/>
+    If approved, you'll receive your login credentials and be added to the therapist directory.</p>
+    <p style="margin-top:16px">Questions? <a href="mailto:support@mindbridge.app">support@mindbridge.app</a></p>
+  </div>
+</div>
+
+<script>
+  const API = 'https://mindbridge-api-z1x5.onrender.com/api/v1'
+  const selectedSpecs = new Set()
+
+  // Specialization chips toggle
+  document.querySelectorAll('.spec-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const val = chip.dataset.value
+      if (selectedSpecs.has(val)) {
+        selectedSpecs.delete(val)
+        chip.classList.remove('selected')
+      } else {
+        selectedSpecs.add(val)
+        chip.classList.add('selected')
+      }
+    })
+  })
+
+  document.getElementById('apply-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const btn = document.getElementById('submit-btn')
+    const errBox = document.getElementById('error-box')
+    errBox.style.display = 'none'
+
+    if (selectedSpecs.size === 0) {
+      errBox.textContent = 'Please select at least one specialization.'
+      errBox.style.display = 'block'
+      return
+    }
+
+    const fd = new FormData(e.target)
+    const data = {
+      full_name:        fd.get('full_name'),
+      email:            fd.get('email'),
+      phone:            fd.get('phone'),
+      whatsapp_number:  fd.get('whatsapp_number'),
+      title:            fd.get('title') || '',
+      credentials:      fd.get('credentials'),
+      bio:              fd.get('bio'),
+      years_experience: parseInt(fd.get('years_experience')) || 0,
+      specializations:  Array.from(selectedSpecs),
+      motivation:       fd.get('motivation'),
+    }
+
+    btn.disabled = true
+    btn.textContent = 'Submitting…'
+
+    try {
+      const res = await fetch(`${API}/therapists/apply/`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(data),
+      })
+
+      if (res.ok) {
+        document.getElementById('apply-form').style.display = 'none'
+        document.getElementById('success').style.display = 'block'
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      } else {
+        const err = await res.json()
+        const msg = Object.entries(err).map(([k, v]) => `${k}: ${Array.isArray(v) ? v[0] : v}`).join('\n')
+        errBox.textContent = msg || 'Submission failed. Please try again.'
+        errBox.style.display = 'block'
+        btn.disabled = false
+        btn.textContent = 'Submit Application →'
+      }
+    } catch (ex) {
+      errBox.textContent = 'Network error. Please check your connection.'
+      errBox.style.display = 'block'
+      btn.disabled = false
+      btn.textContent = 'Submit Application →'
+    }
+  })
+</script>
+</body>
+</html>
