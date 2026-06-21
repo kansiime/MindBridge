@@ -220,21 +220,38 @@ function ChatModule({ mod, user, onBack }) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [sessionId, setSessionId] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [pendingMsg, setPendingMsg] = useState(null);
   const [showChips, setShowChips] = useState(true);
   const [crisisVisible, setCrisisVisible] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    chatAPI.createSession(mod.id).then(data => { if (data?.data?.id) setSessionId(data.data.id); });
+    chatAPI.createSession(mod.id).then(data => {
+      if (data?.data?.id) {
+        setSessionId(data.data.id);
+        setSessionReady(true);
+      }
+    });
   }, [mod.id]);
+
+  // Send any message that was queued before session was ready
+  useEffect(() => {
+    if (sessionReady && pendingMsg) {
+      setPendingMsg(null);
+      send(pendingMsg);
+    }
+  }, [sessionReady, pendingMsg]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, streaming]);
 
   const CRISIS = ["suicide","kill myself","self harm","hurt myself","end it all","want to die"];
 
   const send = useCallback(async (text) => {
-    if (!text.trim() || streaming || !sessionId) return;
+    if (!text.trim() || streaming) return;
+    // If session not ready yet, queue the message
+    if (!sessionId) { setPendingMsg(text); return; }
     setShowChips(false);
     const userMsg = { id: Date.now().toString(), role:"user", content:text, created_at:new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
@@ -275,7 +292,7 @@ function ChatModule({ mod, user, onBack }) {
       setStreaming(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [streaming, sessionId]);
+  }, [streaming, sessionId, sessionReady]);
 
   async function endSession() {
     if (sessionId) await chatAPI.endSession(sessionId);
@@ -300,6 +317,7 @@ function ChatModule({ mod, user, onBack }) {
             <span style={{ color:C.muted, fontSize:11 }}>Active · {user?.name || user?.email}</span>
           </div>
         </div>
+        {!sessionReady && <span style={{ fontSize:11, color:C.muted, animation:"fadeIn .5s ease" }}>Connecting…</span>}
         <button onClick={endSession} style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.15)", borderRadius:50, padding:"4px 12px", color:"#F87171", fontSize:11, cursor:"pointer" }}>End</button>
       </div>
 
