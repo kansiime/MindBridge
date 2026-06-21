@@ -97,9 +97,14 @@ function LoginScreen({ onLogin, onGoRegister }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true); setError("");
-    const { ok, data } = await authAPI.login(email, password);
-    if (ok) { onLogin(data); }
-    else { setError(data?.detail || data?.non_field_errors?.[0] || "Invalid email or password"); }
+    const { ok, data, error } = await authAPI.login(email, password);
+    if (ok) {
+      // After login, fetch user profile
+      const user = await authAPI.me();
+      onLogin(user || { email });
+    } else {
+      setError(error?.detail || error?.non_field_errors?.[0] || "Invalid email or password");
+    }
     setLoading(false);
   }
 

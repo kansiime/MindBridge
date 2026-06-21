@@ -1,12 +1,8 @@
-// All API calls go to Django backend
-// In dev: proxied to http://localhost:8000 via package.json proxy
-// In prod: Railway URL set via REACT_APP_API_URL env var
-
 const BASE_URL = process.env.REACT_APP_API_URL
   ? `${process.env.REACT_APP_API_URL}/api/v1`
   : '/api/v1'
 
-// ── Auth helpers ──────────────────────────────────────────────────────────────
+// ── Token storage ─────────────────────────────────────────────────────────────
 function getTokens() {
   return {
     access:  localStorage.getItem('mb_access'),
@@ -15,7 +11,7 @@ function getTokens() {
 }
 
 function setTokens(access, refresh) {
-  localStorage.setItem('mb_access', access)
+  if (access)  localStorage.setItem('mb_access',  access)
   if (refresh) localStorage.setItem('mb_refresh', refresh)
 }
 
@@ -36,7 +32,7 @@ async function apiFetch(path, options = {}) {
 
   let res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
 
-  // Auto-refresh on 401
+  // Try refresh on 401
   if (res.status === 401) {
     const { refresh } = getTokens()
     if (refresh) {
@@ -52,9 +48,10 @@ async function apiFetch(path, options = {}) {
         res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
       } else {
         clearTokens()
-        window.location.href = '/login'
         return null
       }
+    } else {
+      return null
     }
   }
 
@@ -73,7 +70,8 @@ export const authAPI = {
     if (res.ok && data.tokens) {
       setTokens(data.tokens.access, data.tokens.refresh)
     }
-    return { ok: res.ok, data }
+    // Return the user object from register
+    return { ok: res.ok, data: data.user || data, error: res.ok ? null : data }
   },
 
   async login(email, password) {
@@ -84,23 +82,27 @@ export const authAPI = {
     })
     const data = await res.json()
     if (res.ok) {
+      // SimpleJWT returns { access, refresh } at top level
       setTokens(data.access, data.refresh)
     }
-    return { ok: res.ok, data }
+    return { ok: res.ok, data, error: res.ok ? null : data }
   },
 
   async logout() {
     const { refresh } = getTokens()
-    await apiFetch('/auth/logout/', {
-      method: 'POST',
-      body:   JSON.stringify({ refresh }),
-    })
+    try {
+      await apiFetch('/auth/logout/', {
+        method: 'POST',
+        body:   JSON.stringify({ refresh }),
+      })
+    } catch { /* ignore */ }
     clearTokens()
   },
 
   async me() {
     const res = await apiFetch('/auth/me/')
-    return res?.ok ? res.json() : null
+    if (!res || !res.ok) return null
+    return res.json()
   },
 
   isLoggedIn() {
@@ -108,28 +110,15 @@ export const authAPI = {
   },
 }
 
-// ── Modules API ───────────────────────────────────────────────────────────────
-export const modulesAPI = {
-  async list() {
-    const res = await apiFetch('/modules/')
-    return res?.ok ? res.json() : null
-  },
-}
-
 // ── Chat API ──────────────────────────────────────────────────────────────────
 export const chatAPI = {
-  async createSession(moduleId, moodLabel = '') {
+  async createSession(moduleId) {
     const res = await apiFetch('/chat/sessions/', {
       method: 'POST',
-      body:   JSON.stringify({ module_id: moduleId, mood_label: moodLabel }),
+      body:   JSON.stringify({ module_id: moduleId }),
     })
-    return res?.ok ? res.json() : null
-  },
-
-  async getSessions(params = {}) {
-    const query = new URLSearchParams(params).toString()
-    const res   = await apiFetch(`/chat/sessions/${query ? '?' + query : ''}`)
-    return res?.ok ? res.json() : null
+    if (!res || !res.ok) return null
+    return res.json()
   },
 
   async endSession(sessionId) {
@@ -140,25 +129,16 @@ export const chatAPI = {
     return res?.ok ? res.json() : null
   },
 
-  // Returns a ReadableStream for SSE
-  streamMessage(sessionId, content, useRag = false) {
+  streamMessage(sessionId, content) {
     const { access } = getTokens()
     return fetch(`${BASE_URL}/chat/sessions/${sessionId}/messages/`, {
       method:  'POST',
       headers: {
-        'Content-Type':  'application/json',
-        Authorization:   `Bearer ${access}`,
+        'Content-Type': 'application/json',
+        Authorization:  `Bearer ${access}`,
       },
-      body: JSON.stringify({ content, use_rag: useRag }),
+      body: JSON.stringify({ content }),
     })
-  },
-
-  async logMood(mood, score = null, note = '') {
-    const res = await apiFetch('/chat/moods/', {
-      method: 'POST',
-      body:   JSON.stringify({ mood, score, note }),
-    })
-    return res?.ok ? res.json() : null
   },
 
   async getMoods() {
@@ -167,35 +147,10 @@ export const chatAPI = {
   },
 }
 
-// ── Scanner API ───────────────────────────────────────────────────────────────
-export const scannerAPI = {
-  async scan(imageBase64) {
-    const res = await apiFetch('/scanner/scan/', {
-      method: 'POST',
-      body:   JSON.stringify({ image_base64: imageBase64 }),
-    })
-    return res?.ok ? res.json() : null
-  },
-}
-
-// ── Admin API ─────────────────────────────────────────────────────────────────
-export const adminAPI = {
-  async stats() {
-    const res = await apiFetch('/auth/admin/stats/')
-    return res?.ok ? res.json() : null
-  },
-
-  async users(params = {}) {
-    const query = new URLSearchParams(params).toString()
-    const res   = await apiFetch(`/auth/admin/users/${query ? '?' + query : ''}`)
-    return res?.ok ? res.json() : null
-  },
-
-  async updateUser(id, data) {
-    const res = await apiFetch(`/auth/admin/users/${id}/`, {
-      method: 'PATCH',
-      body:   JSON.stringify(data),
-    })
+// ── Modules API ───────────────────────────────────────────────────────────────
+export const modulesAPI = {
+  async list() {
+    const res = await apiFetch('/modules/')
     return res?.ok ? res.json() : null
   },
 }
