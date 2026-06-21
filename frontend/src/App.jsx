@@ -97,13 +97,12 @@ function LoginScreen({ onLogin, onGoRegister }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true); setError("");
-    const { ok, data, error } = await authAPI.login(email, password);
-    if (ok) {
-      // After login, fetch user profile
-      const user = await authAPI.me();
-      onLogin(user || { email });
+    const result = await authAPI.login(email, password);
+    if (result.ok) {
+      onLogin(result.user);
     } else {
-      setError(error?.detail || error?.non_field_errors?.[0] || "Invalid email or password");
+      const err = result.error;
+      setError(err?.detail || err?.non_field_errors?.[0] || err?.email?.[0] || "Invalid email or password");
     }
     setLoading(false);
   }
@@ -151,9 +150,12 @@ function RegisterScreen({ onLogin, onGoLogin }) {
     e.preventDefault();
     if (password !== password2) { setError("Passwords do not match"); return; }
     setLoading(true); setError("");
-    const { ok, data } = await authAPI.register(email, password, password2, name);
-    if (ok) { onLogin(data.user); }
-    else { setError(data?.email?.[0] || data?.password?.[0] || data?.detail || "Registration failed"); }
+    const result = await authAPI.register(email, password, password2, name);
+    if (result.ok) { onLogin(result.user); }
+    else {
+      const err = result.error;
+      setError(err?.email?.[0] || err?.password?.[0] || err?.detail || "Registration failed");
+    }
     setLoading(false);
   }
 
@@ -201,13 +203,17 @@ function ChatModule({ mod, user, onBack }) {
 
   useEffect(() => {
     chatAPI.createSession(mod.id).then(data => {
-      if (data?.data?.id) {
-        sessionIdRef.current = data.data.id;
+      const sid = data?.data?.id || data?.id;
+      if (sid) {
+        sessionIdRef.current = sid;
+        console.log('[APP] session ready:', sid);
         if (pendingRef.current) {
           const msg = pendingRef.current;
           pendingRef.current = null;
           sendMsg(msg);
         }
+      } else {
+        console.error('[APP] session create failed:', data);
       }
     });
   }, [mod.id]);

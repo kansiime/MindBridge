@@ -122,11 +122,18 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
-CORS_ALLOWED_ORIGINS = os.getenv(
+# Allow specific origins from env, or use wildcard for flexibility
+_cors_origins = os.getenv(
     'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,https://mindbridge-noel.web.app,https://mindbridge-frontend-18an.onrender.com',
-).split(',')
+    'http://localhost:3000,https://mindbridge-frontend-18an.onrender.com',
+)
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL', 'False') == 'True'
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept', 'accept-encoding', 'authorization', 'content-type',
+    'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with',
+]
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'MindBridge API',
