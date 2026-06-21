@@ -1,6 +1,4 @@
 # Render Blueprint — deploys both Django API and React frontend
-# docs: https://render.com/docs/blueprint-spec
-
 services:
   # ── Django Backend ──────────────────────────────────────────
   - type: web
@@ -11,10 +9,24 @@ services:
     startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
     healthCheckPath: /api/v1/modules/
     envVars:
-      - key: SECRET_KEY
-        sync: false
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings
       - key: DEBUG
         value: 'False'
+      - key: DB_PORT
+        value: '5432'
+      - key: ALLOWED_HOSTS
+        value: 'mindbridge-api.onrender.com'
+      - key: CORS_ALLOWED_ORIGINS
+        value: 'https://mindbridge-frontend.onrender.com'
+      - key: ENABLE_FACE_SCAN
+        value: 'true'
+      - key: ENABLE_RAG
+        value: 'true'
+      # Set these in Render dashboard → Environment:
+      # SECRET_KEY, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, ANTHROPIC_API_KEY
+      - key: SECRET_KEY
+        sync: false
       - key: DB_NAME
         sync: false
       - key: DB_USER
@@ -23,18 +35,8 @@ services:
         sync: false
       - key: DB_HOST
         sync: false
-      - key: DB_PORT
-        value: '5432'
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: ALLOWED_HOSTS
-        value: 'mindbridge-api.onrender.com,mindbridge-noel.web.app'
-      - key: CORS_ALLOWED_ORIGINS
-        value: 'https://mindbridge-noel.web.app,https://mindbridge-api.onrender.com'
-      - key: ENABLE_FACE_SCAN
-        value: 'true'
-      - key: ENABLE_RAG
-        value: 'true'
 
   # ── React Frontend ──────────────────────────────────────────
   - type: web
