@@ -219,44 +219,40 @@ function ChatModule({ mod, user, onBack }) {
   const [messages, setMessages] = useState([{ id:"intro", role:"assistant", content:MODULE_INTROS[mod.id] || "How are you feeling?", created_at:new Date().toISOString() }]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [sessionId, setSessionId] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
-  const [pendingMsg, setPendingMsg] = useState(null);
   const [showChips, setShowChips] = useState(true);
   const [crisisVisible, setCrisisVisible] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const sessionIdRef = useRef(null);
+  const pendingRef = useRef(null);
 
   useEffect(() => {
     chatAPI.createSession(mod.id).then(data => {
       if (data?.data?.id) {
-        setSessionId(data.data.id);
+        sessionIdRef.current = data.data.id;
         setSessionReady(true);
+        // Send any message that was clicked before session was ready
+        if (pendingRef.current) {
+          const msg = pendingRef.current;
+          pendingRef.current = null;
+          doSend(msg);
+        }
       }
     });
   }, [mod.id]);
-
-  // Send any message that was queued before session was ready
-  useEffect(() => {
-    if (sessionReady && pendingMsg) {
-      setPendingMsg(null);
-      send(pendingMsg);
-    }
-  }, [sessionReady, pendingMsg]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, streaming]);
 
   const CRISIS = ["suicide","kill myself","self harm","hurt myself","end it all","want to die"];
 
-  const send = useCallback(async (text) => {
-    if (!text.trim() || streaming) return;
-    // If session not ready yet, queue the message
-    if (!sessionId) { setPendingMsg(text); return; }
+  async function doSend(text) {
+    if (!text.trim()) return;
+    const sid = sessionIdRef.current;
+    if (!sid) return;
     setShowChips(false);
     const userMsg = { id: Date.now().toString(), role:"user", content:text, created_at:new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
-    setInput("");
-    if (inputRef.current) inputRef.current.style.height = "auto";
     if (CRISIS.some(k => text.toLowerCase().includes(k))) setCrisisVisible(true);
 
     setStreaming(true);
@@ -264,7 +260,7 @@ function ChatModule({ mod, user, onBack }) {
     setMessages(prev => [...prev, { id:placeholderId, role:"assistant", content:"", created_at:new Date().toISOString() }]);
 
     try {
-      const res = await chatAPI.streamMessage(sessionId, text);
+      const res = await chatAPI.streamMessage(sid, text);
       if (!res?.body) throw new Error("No stream");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -292,10 +288,10 @@ function ChatModule({ mod, user, onBack }) {
       setStreaming(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [streaming, sessionId, sessionReady]);
+
 
   async function endSession() {
-    if (sessionId) await chatAPI.endSession(sessionId);
+    if (sessionIdRef.current) await chatAPI.endSession(sessionIdRef.current);
     onBack();
   }
 
@@ -347,7 +343,10 @@ function ChatModule({ mod, user, onBack }) {
         {showChips ? (
           <div style={{ display:"flex", gap:7, overflowX:"auto", paddingBottom:2 }}>
             {chips.map(p => (
-              <button key={p} onClick={() => send(p)} style={{ background:`${mod.color}16`, border:`1px solid ${mod.color}28`, borderRadius:50, padding:"7px 12px", fontSize:12, color:mod.color, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>{p}</button>
+              <button key={p} onClick={() => {
+                if (sessionIdRef.current) { doSend(p); }
+                else { pendingRef.current = p; setShowChips(false); }
+              }} style={{ background:`${mod.color}16`, border:`1px solid ${mod.color}28`, borderRadius:50, padding:"7px 12px", fontSize:12, color:mod.color, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>{p}</button>
             ))}
           </div>
         ) : (
@@ -370,11 +369,11 @@ function ChatModule({ mod, user, onBack }) {
           {!input && <span style={{ position:"absolute", left:16, top:"50%", transform:"translateY(-50%)", color:"#334155", fontSize:14, pointerEvents:"none" }}>Say anything…</span>}
           <textarea ref={inputRef} value={input}
             onChange={e => { setInput(e.target.value); e.currentTarget.style.height="auto"; e.currentTarget.style.height=Math.min(e.currentTarget.scrollHeight,100)+"px"; }}
-            onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
+            onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); doSend(input); } }}
             rows={1} disabled={streaming} aria-label="Your message"
             style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:`1.5px solid ${C.border}`, borderRadius:18, padding:"11px 16px", fontSize:14, color:C.text, outline:"none", resize:"none", fontFamily:"system-ui,sans-serif", lineHeight:1.5, maxHeight:100, display:"block" }} />
         </div>
-        <button onClick={() => send(input)} disabled={streaming || !input.trim()} aria-label="Send"
+        <button onClick={() => doSend(input)} disabled={streaming || !input.trim()} aria-label="Send"
           style={{ width:44, height:44, borderRadius:"50%", border:"none", flexShrink:0, fontSize:17, display:"flex", alignItems:"center", justifyContent:"center", cursor:streaming||!input.trim()?"default":"pointer", background:streaming||!input.trim()?"rgba(255,255,255,0.05)":`linear-gradient(135deg,${mod.color},${C.violetDim})`, color:streaming||!input.trim()?"#334155":"#fff", boxShadow:streaming||!input.trim()?"none":`0 0 18px ${mod.color}55` }}>↑</button>
       </div>
     </div>
