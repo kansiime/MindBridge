@@ -203,17 +203,15 @@ function ChatModule({ mod, user, onBack }) {
 
   useEffect(() => {
     chatAPI.createSession(mod.id).then(data => {
-      const sid = data?.data?.id || data?.id;
+      const sid = data?.id;
+      console.log('[APP] session result:', JSON.stringify(data), '| id:', sid);
       if (sid) {
         sessionIdRef.current = sid;
-        console.log('[APP] session ready:', sid);
         if (pendingRef.current) {
           const msg = pendingRef.current;
           pendingRef.current = null;
           sendMsg(msg);
         }
-      } else {
-        console.error('[APP] session create failed:', data);
       }
     });
   }, [mod.id]);

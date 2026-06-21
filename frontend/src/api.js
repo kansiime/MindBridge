@@ -137,8 +137,10 @@ export const chatAPI = {
     if (!res) { console.error('[CHAT] createSession: no response (auth failed?)'); return null }
     if (!res.ok) { console.error('[CHAT] createSession failed:', res.status); return null }
     const data = await res.json()
-    console.log('[CHAT] session created:', data?.data?.id || data?.id)
-    return data
+    // DRF returns the object directly on create, not wrapped in {data: ...}
+    const sid = data?.id || data?.data?.id
+    console.log('[CHAT] session created:', sid, '| raw:', JSON.stringify(data))
+    return { id: sid, ...data }
   },
 
   async endSession(sessionId) {
