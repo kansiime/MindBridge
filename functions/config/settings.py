@@ -150,6 +150,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 ENABLE_FACE_SCAN = os.getenv('ENABLE_FACE_SCAN', 'true') == 'true'
 ENABLE_RAG = os.getenv('ENABLE_RAG', 'true') == 'true'
 
