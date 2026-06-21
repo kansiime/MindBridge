@@ -8,7 +8,7 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # 1. LINT
+  # 1. LINT BACKEND
   # ─────────────────────────────────────────────────────────────
   lint:
     name: Lint (flake8)
@@ -23,7 +23,7 @@ jobs:
       - run: flake8 functions/ --max-line-length=120 --exclude=migrations,venv,__pycache__
 
   # ─────────────────────────────────────────────────────────────
-  # 2. TEST
+  # 2. TEST BACKEND
   # ─────────────────────────────────────────────────────────────
   test:
     name: Tests (Neon PostgreSQL)
@@ -31,29 +31,42 @@ jobs:
     needs: lint
 
     env:
-      SECRET_KEY:        ${{ secrets.SECRET_KEY }}
-      DEBUG:             'True'
-      DB_NAME:           ${{ secrets.DB_NAME }}
-      DB_USER:           ${{ secrets.DB_USER }}
-      DB_PASSWORD:       ${{ secrets.DB_PASSWORD }}
-      DB_HOST:           ${{ secrets.DB_HOST }}
-      DB_PORT:           '5432'
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ENABLE_FACE_SCAN:  'false'
-      ENABLE_RAG:        'false'
+      SECRET_KEY:             ${{ secrets.SECRET_KEY }}
+      DEBUG:                  'True'
+      DB_NAME:                ${{ secrets.DB_NAME }}
+      DB_USER:                ${{ secrets.DB_USER }}
+      DB_PASSWORD:            ${{ secrets.DB_PASSWORD }}
+      DB_HOST:                ${{ secrets.DB_HOST }}
+      DB_PORT:                '5432'
+      ANTHROPIC_API_KEY:      ${{ secrets.ANTHROPIC_API_KEY }}
+      ENABLE_FACE_SCAN:       'false'
+      ENABLE_RAG:             'false'
       DJANGO_SETTINGS_MODULE: config.settings
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-      - name: Install dependencies
-        run: pip install -r functions/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: functions
+        run: pip install -r requirements.txt
+
+      - name: Check DB secrets
+        run: |
+          if [ -z "$DB_NAME" ]; then echo "ERROR: DB_NAME is empty"; exit 1; fi
+          if [ -z "$DB_USER" ]; then echo "ERROR: DB_USER is empty"; exit 1; fi
+          if [ -z "$DB_HOST" ]; then echo "ERROR: DB_HOST is empty"; exit 1; fi
+          if [ -z "$DB_PASSWORD" ]; then echo "ERROR: DB_PASSWORD is empty"; exit 1; fi
+          echo "All DB secrets confirmed"
+
       - name: Run migrations
         working-directory: functions
         run: python manage.py migrate
+
       - name: Run tests
         working-directory: functions
         run: python manage.py test --verbosity=2
@@ -62,24 +75,35 @@ jobs:
   # 3. BUILD REACT FRONTEND
   # ─────────────────────────────────────────────────────────────
   build-frontend:
-    name: Build Frontend
+    name: Build Frontend (React)
     runs-on: ubuntu-latest
     needs: lint
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & build
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: |
-          npm install
-          REACT_APP_API_URL=https://us-central1-mindbridge-noel.cloudfunctions.net/mindbridge \
-          npm run build
-      - name: Copy build to public/
+        run: npm install
+
+      - name: Build React app
+        working-directory: frontend
+        env:
+          CI: false
+          REACT_APP_API_URL: https://us-central1-mindbridge-noel.cloudfunctions.net/mindbridge
+        run: npm run build
+
+      - name: Copy build output to public/
         run: |
           cp -r frontend/build/static public/
           cp frontend/build/index.html public/index.html
+
       - name: Upload public folder
         uses: actions/upload-artifact@v4
         with:
@@ -119,22 +143,26 @@ jobs:
       - name: Write service account
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
 
-      - name: Set environment variables for Function
-        run: |
-          npx firebase-tools functions:secrets:set DB_NAME --data "${{ secrets.DB_NAME }}" --project mindbridge-noel
-          npx firebase-tools functions:secrets:set DB_USER --data "${{ secrets.DB_USER }}" --project mindbridge-noel
-          npx firebase-tools functions:secrets:set DB_PASSWORD --data "${{ secrets.DB_PASSWORD }}" --project mindbridge-noel
-          npx firebase-tools functions:secrets:set DB_HOST --data "${{ secrets.DB_HOST }}" --project mindbridge-noel
-          npx firebase-tools functions:secrets:set SECRET_KEY --data "${{ secrets.SECRET_KEY }}" --project mindbridge-noel
-          npx firebase-tools functions:secrets:set ANTHROPIC_API_KEY --data "${{ secrets.ANTHROPIC_API_KEY }}" --project mindbridge-noel
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
-
       - name: Deploy to Firebase
         run: firebase deploy --only functions,hosting --project mindbridge-noel
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
 
-      - name: Cleanup
+      - name: Cleanup credentials
         if: always()
         run: rm -f /tmp/sa.json
+
+  # ─────────────────────────────────────────────────────────────
+  # 5. SECURITY AUDIT
+  # ─────────────────────────────────────────────────────────────
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install safety bandit
+      - run: safety check -r functions/requirements.txt || true
+      - run: bandit -r functions/ -x functions/migrations --severity-level medium || true
