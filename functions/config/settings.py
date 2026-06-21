@@ -123,7 +123,7 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,https://mindbridge-noel.web.app',
+    'http://localhost:3000,https://mindbridge-noel.web.app,https://mindbridge-frontend-18an.onrender.com',
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
