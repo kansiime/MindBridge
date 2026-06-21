@@ -1,4 +1,4 @@
-import { authAPI, chatAPI } from "./api";
+import { authAPI, chatAPI, therapistAPI } from "./api";
 import { useState, useRef, useEffect } from "react";
 
 const C = {
@@ -196,6 +196,8 @@ function ChatModule({ mod, user, onBack }) {
   const [streaming, setStreaming] = useState(false);
   const [showChips, setShowChips] = useState(true);
   const [crisisVisible, setCrisisVisible] = useState(false);
+  const [handoff, setHandoff] = useState(null); // {therapist, whatsapp_link, reason}
+  const [handoffDismissed, setHandoffDismissed] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sessionIdRef = useRef(null);
@@ -229,6 +231,14 @@ function ChatModule({ mod, user, onBack }) {
     if (CRISIS_WORDS.some(k => text.toLowerCase().includes(k))) setCrisisVisible(true);
 
     const userMsg = {id:Date.now().toString(),role:"user",content:text,created_at:new Date().toISOString()};
+    // Check if handoff should trigger (async, non-blocking)
+    if (!handoffDismissed && sessionIdRef.current) {
+      therapistAPI.checkHandoff(sessionIdRef.current, mod.id, messages, text).then(result => {
+        if (result.trigger && result.available && !handoffDismissed) {
+          setHandoff(result);
+        }
+      });
+    }
     setMessages(prev => [...prev, userMsg]);
 
     setStreaming(true);
@@ -320,7 +330,14 @@ function ChatModule({ mod, user, onBack }) {
             ))}
           </div>
         ) : (
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button onClick={() => setShowChips(true)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer"}}>+ Suggestions</button>
+          <button onClick={async () => {
+            const result = await therapistAPI.getAvailable(mod.id);
+            if (result.available) { setHandoff(result); setHandoffDismissed(false); }
+            else { alert("No therapists available right now. Please try again later."); }
+          }} style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:50,padding:"5px 12px",color:"#A78BFA",fontSize:11,cursor:"pointer",fontWeight:600}}>🧑‍⚕️ Talk to therapist</button>
+        </div>
         )}
       </div>
 
@@ -330,6 +347,32 @@ function ChatModule({ mod, user, onBack }) {
           <span>🚨</span>
           <div style={{flex:1,fontSize:12}}><span style={{color:"#FCA5A5",fontWeight:600}}>You matter. </span><span style={{color:C.muted}}>Call <strong style={{color:C.subtle}}>+256787671827</strong> — 24/7</span></div>
           <button onClick={() => setCrisisVisible(false)} style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer"}}>×</button>
+        </div>
+      )}
+
+      {/* Therapist Handoff Banner */}
+      {handoff && !handoffDismissed && (
+        <div style={{padding:"12px 16px",background:"linear-gradient(135deg,rgba(124,58,237,0.15),rgba(45,212,191,0.1))",borderTop:"1px solid rgba(124,58,237,0.3)",flexShrink:0,zIndex:3,animation:"fadeUp .4s ease"}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+            <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${handoff.therapist?.photo_url ? "transparent" : "#7C3AED"},#2DD4BF)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,overflow:"hidden"}}>
+              {handoff.therapist?.photo_url ? <img src={handoff.therapist.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:"#F1F5F9",fontWeight:700,fontSize:13}}>{handoff.therapist?.full_name || "A therapist"} is available</div>
+              <div style={{color:"#94A3B8",fontSize:11,marginTop:2}}>{handoff.therapist?.specializations?.join(" · ") || "Mental Health Specialist"} · Online now</div>
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <a href={handoff.whatsapp_link} target="_blank" rel="noopener noreferrer"
+                  style={{background:"#25D366",borderRadius:8,padding:"8px 14px",color:"#fff",fontSize:12,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:6}}>
+                  💬 Connect on WhatsApp
+                </a>
+                <button onClick={() => setHandoffDismissed(true)}
+                  style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"8px 12px",color:"#64748B",fontSize:12,cursor:"pointer"}}>
+                  Continue with AI
+                </button>
+              </div>
+            </div>
+            <button onClick={() => setHandoffDismissed(true)} style={{background:"none",border:"none",color:"#334155",fontSize:16,cursor:"pointer",flexShrink:0}}>×</button>
+          </div>
         </div>
       )}
 

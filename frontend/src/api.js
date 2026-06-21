@@ -166,3 +166,49 @@ export const chatAPI = {
     })
   },
 }
+
+// ── Therapist API ─────────────────────────────────────────────────────────────
+export const therapistAPI = {
+  async checkHandoff(sessionId, moduleId, messages, currentMessage) {
+    const res = await authFetch('/therapists/check-handoff/', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id:      sessionId,
+        module_id:       moduleId,
+        messages,
+        current_message: currentMessage,
+      }),
+    })
+    if (!res || !res.ok) return { trigger: false }
+    return res.json()
+  },
+
+  async getAvailable(moduleId) {
+    const res = await authFetch(`/therapists/available/?module=${moduleId}`)
+    if (!res || !res.ok) return { available: false }
+    return res.json()
+  },
+
+  async apply(data) {
+    const res = await fetch(`${BASE_URL}/therapists/apply/`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(data),
+    })
+    return { ok: res.ok, data: await res.json() }
+  },
+
+  async directory(specialization = '') {
+    const q   = specialization ? `?specialization=${specialization}` : ''
+    const res = await authFetch(`/therapists/${q}`)
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
+
+  async portal() {
+    const res = await authFetch('/therapists/portal/')
+    if (!res || !res.ok) return null
+    return res.json()
+  },
+}

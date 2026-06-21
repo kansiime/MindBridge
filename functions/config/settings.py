@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'chat',
     'modules',
     'scanner',
+    'therapists',
 ]
 
 MIDDLEWARE = [
