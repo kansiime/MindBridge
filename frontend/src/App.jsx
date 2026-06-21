@@ -142,7 +142,7 @@ function LoginScreen({ onLogin, onGoRegister }) {
             <button onClick={onGoRegister} style={{ background:"none", border:"none", color:C.aqua, cursor:"pointer", fontSize:13, fontWeight:600 }}>Create one free</button>
           </p>
         </div>
-        <p style={{ textAlign:"center", color:"#334155", fontSize:11.5, marginTop:14 }}>Not a replacement for professional care · Crisis: call or text <strong style={{ color:C.muted }}>988</strong></p>
+        <p style={{ textAlign:"center", color:"#334155", fontSize:11.5, marginTop:14 }}>Not a replacement for professional care · Crisis: call or text <strong style={{ color:C.muted }}>+256787671827</strong></p>
       </div>
     </div>
   );
@@ -341,7 +341,7 @@ function ChatModule({ mod, user, onBack }) {
       {crisisVisible && (
         <div style={{ padding:"9px 16px", background:"rgba(239,68,68,0.1)", borderTop:"1px solid rgba(239,68,68,0.2)", display:"flex", alignItems:"center", gap:10, flexShrink:0, zIndex:2, animation:"fadeUp .4s ease" }}>
           <span>🚨</span>
-          <div style={{ flex:1, fontSize:12 }}><span style={{ color:"#FCA5A5", fontWeight:600 }}>You matter. </span><span style={{ color:C.muted }}>Call or text <strong style={{ color:C.subtle }}>988</strong> — free, 24/7</span></div>
+          <div style={{ flex:1, fontSize:12 }}><span style={{ color:"#FCA5A5", fontWeight:600 }}>You matter. </span><span style={{ color:C.muted }}>Call <strong style={{ color:C.subtle }}>+256787671827</strong> — 24/7</span></div>
           <button onClick={() => setCrisisVisible(false)} style={{ background:"none", border:"none", color:C.muted, fontSize:16, cursor:"pointer" }}>×</button>
         </div>
       )}
@@ -428,7 +428,7 @@ function Home({ user, onSelect, onLogout }) {
       {/* Crisis footer */}
       <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"10px 20px", background:"rgba(10,8,24,0.95)", backdropFilter:"blur(12px)", borderTop:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:10, zIndex:50 }}>
         <span>🚨</span>
-        <span style={{ color:C.muted, fontSize:12, flex:1 }}>In crisis? Call or text <strong style={{ color:C.subtle }}>988</strong> — free, confidential, 24/7</span>
+        <span style={{ color:C.muted, fontSize:12, flex:1 }}>In crisis? Call <strong style={{ color:C.subtle }}>+256787671827</strong> — free, confidential, 24/7</span>
       </div>
     </div>
   );
