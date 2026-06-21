@@ -1,56 +1,81 @@
-# MindBridge AI — Firebase Deployment
+# MindBridge AI
 
-Django REST API + React frontend deployed entirely on Firebase.
+AI-powered mental health companion — Django backend + React frontend.
 
-## Architecture
+## Deployment: Render (free, no credit card)
+
 ```
-Firebase Hosting  (/*)           → React SPA (public/)
-Firebase Functions (/api/v1/*)   → Django API (functions/)
-Neon PostgreSQL                  → Database
-```
-
-## One-time Setup (run locally)
-
-### 1. Fix Firebase service account permissions
-```bash
-# Install gcloud CLI first: https://cloud.google.com/sdk/docs/install
-gcloud auth login
-bash scripts/fix_permissions.sh
+GitHub push → Render auto-deploys
+  ├── mindbridge-api      (Django REST API)
+  └── mindbridge-frontend (React SPA)
+Both use Neon PostgreSQL as database.
 ```
 
-### 2. Add GitHub Secrets
-Go to: github.com/kansiime/MindBridge → Settings → Secrets → Actions
+## Live URLs (after deploy)
+- **Frontend**: https://mindbridge-frontend.onrender.com
+- **API**:      https://mindbridge-api.onrender.com/api/v1/
+- **API Docs**: https://mindbridge-api.onrender.com/api/v1/docs/
 
-| Secret | Value |
+## Deploy in 3 steps
+
+### Step 1 — Sign up at Render
+Go to **[render.com](https://render.com)** → Sign up with GitHub (free)
+
+### Step 2 — Create Blueprint
+- Click **New** → **Blueprint**
+- Connect repo: `kansiime/MindBridge`
+- Render reads `render.yaml` automatically and creates both services
+
+### Step 3 — Add environment variables
+In Render dashboard → `mindbridge-api` service → **Environment**:
+
+| Variable | Value |
 |---|---|
-| `SECRET_KEY` | Django secret key |
+| `SECRET_KEY` | your Django secret key |
 | `DB_NAME` | `Mindbrigdeai` |
 | `DB_USER` | `noelkansiime` |
-| `DB_PASSWORD` | Neon password |
+| `DB_PASSWORD` | your Neon password |
 | `DB_HOST` | `ep-polished-hall-a53xyenl-pooler.us-east-2.aws.neon.tech` |
-| `ANTHROPIC_API_KEY` | Your Anthropic key |
-| `FIREBASE_SERVICE_ACCOUNT` | Firebase Admin SDK JSON |
+| `ANTHROPIC_API_KEY` | your Anthropic key |
 
-### 3. Push to main
-```bash
-git push origin main
-# GitHub Actions handles everything automatically
+Click **Save** — Render deploys automatically. Done!
+
+## Project Structure
+```
+MindBridge/
+├── functions/          ← Django REST API
+│   ├── config/         ← settings, urls, wsgi
+│   ├── users/          ← auth, roles (user/therapist/admin)
+│   ├── chat/           ← sessions, messages, mood tracking
+│   ├── modules/        ← 10 mental health modules config
+│   ├── scanner/        ← face mood scan (Claude Vision)
+│   └── requirements.txt
+├── frontend/           ← React SPA
+│   ├── src/
+│   │   ├── App.jsx     ← full MindBridge UI
+│   │   └── api.js      ← typed API client
+│   └── package.json
+├── render.yaml         ← Render deployment blueprint
+└── .github/workflows/  ← CI (lint + test on every push)
 ```
 
-## Live URLs
-- Frontend: https://mindbridge-noel.web.app
-- API: https://us-central1-mindbridge-noel.cloudfunctions.net/mindbridge/api/v1/
-- Docs: https://us-central1-mindbridge-noel.cloudfunctions.net/mindbridge/api/v1/docs/
+## Why Render instead of Firebase Functions?
+Firebase Functions requires the **Blaze (paid) plan**.
+Render is **completely free** with no credit card required.
 
 ## Local Development
 ```bash
-# Backend
+# Backend (terminal 1)
 cd functions
 pip install -r requirements.txt
 python manage.py runserver
 
-# Frontend (separate terminal)
+# Frontend (terminal 2)
 cd frontend
 npm install
-npm start   # proxies API calls to localhost:8000
+npm start    # proxies /api/v1/* to localhost:8000
 ```
+
+## Roles: `user` · `therapist` · `admin`
+
+> Not a replacement for professional care. Crisis: call or text **988**.
