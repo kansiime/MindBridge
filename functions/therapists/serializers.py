@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import TherapistProfile, TherapistApplication, PatientAssignment
+from .models import TherapistProfile, TherapistApplication, PatientAssignment, ConnectionRequest, DirectMessage
 
 
 class TherapistProfileSerializer(serializers.ModelSerializer):
@@ -48,3 +48,46 @@ class PatientAssignmentSerializer(serializers.ModelSerializer):
 
     def get_patient_email(self, obj):
         return obj.patient.email
+
+
+class DirectMessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    sender_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DirectMessage
+        fields = ['id', 'sender', 'sender_name', 'sender_role', 'content', 'created_at']
+        read_only_fields = ['id', 'sender', 'created_at']
+
+    def get_sender_name(self, obj):
+        return obj.sender.name or obj.sender.email.split('@')[0]
+
+    def get_sender_role(self, obj):
+        return obj.sender.role
+
+
+class ConnectionRequestSerializer(serializers.ModelSerializer):
+    therapist = TherapistProfileSerializer(read_only=True)
+    therapist_id = serializers.UUIDField(write_only=True)
+    patient_name = serializers.SerializerMethodField()
+    patient_email = serializers.SerializerMethodField()
+    messages = DirectMessageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ConnectionRequest
+        fields = [
+            'id', 'therapist', 'therapist_id', 'patient_name', 'patient_email',
+            'message', 'status', 'created_at', 'responded_at', 'messages',
+        ]
+        read_only_fields = ['id', 'status', 'created_at', 'responded_at']
+
+    def get_patient_name(self, obj):
+        return obj.patient.name or obj.patient.email.split('@')[0]
+
+    def get_patient_email(self, obj):
+        return obj.patient.email
+
+    def create(self, validated_data):
+        therapist_id = validated_data.pop('therapist_id')
+        therapist = TherapistProfile.objects.get(id=therapist_id)
+        return ConnectionRequest.objects.create(therapist=therapist, **validated_data)

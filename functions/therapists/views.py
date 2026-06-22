@@ -5,9 +5,10 @@ from rest_framework.views import APIView
 
 from users.permissions import IsAdmin, IsTherapistOrAdmin
 from .matching import find_available_therapist, build_whatsapp_message, should_trigger_handoff
-from .models import TherapistProfile, TherapistApplication, PatientAssignment, HandoffEvent
+from .models import TherapistProfile, TherapistApplication, PatientAssignment, HandoffEvent, ConnectionRequest, DirectMessage
 from .serializers import (
     TherapistProfileSerializer, TherapistApplicationSerializer,
+    ConnectionRequestSerializer, DirectMessageSerializer,
 )
 
 
@@ -272,3 +273,91 @@ class AdminApplicationReviewView(APIView):
                 f'Share credentials via WhatsApp: {app.whatsapp_number}'
             )
         return Response(response_data)
+
+
+# ── Connection Requests ───────────────────────────────────────────────────────
+
+class ConnectionRequestListCreateView(APIView):
+    """
+    GET  /api/v1/therapists/connections/  — list user's requests or therapist's incoming
+    POST /api/v1/therapists/connections/  — patient requests to connect with a therapist
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role == 'therapist':
+            try:
+                profile = user.therapist_profile
+            except TherapistProfile.DoesNotExist:
+                return Response([])
+            qs = ConnectionRequest.objects.filter(therapist=profile).select_related('patient')
+        else:
+            qs = ConnectionRequest.objects.filter(patient=user).select_related('therapist__user')
+        return Response(ConnectionRequestSerializer(qs, many=True).data)
+
+    def post(self, request):
+        serializer = ConnectionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(patient=request.user)
+        return Response(serializer.data, status=201)
+
+
+class ConnectionRequestRespondView(APIView):
+    """PATCH /api/v1/therapists/connections/<id>/respond/ — therapist accepts/declines"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            conn = ConnectionRequest.objects.get(id=pk)
+        except ConnectionRequest.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=404)
+
+        if request.user.role != 'therapist' or conn.therapist.user != request.user:
+            return Response({'error': 'Forbidden.'}, status=403)
+
+        action = request.data.get('action')
+        if action not in ('accept', 'decline'):
+            return Response({'error': "action must be 'accept' or 'decline'"}, status=400)
+
+        conn.status = 'accepted' if action == 'accept' else 'declined'
+        conn.responded_at = timezone.now()
+        conn.save()
+        return Response(ConnectionRequestSerializer(conn).data)
+
+
+class DirectMessageListCreateView(APIView):
+    """
+    GET  /api/v1/therapists/connections/<id>/messages/ — fetch messages
+    POST /api/v1/therapists/connections/<id>/messages/ — send a message
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_connection(self, pk, user):
+        try:
+            conn = ConnectionRequest.objects.select_related('therapist__user', 'patient').get(id=pk)
+        except ConnectionRequest.DoesNotExist:
+            return None, 'Not found.'
+        is_patient = conn.patient == user
+        is_therapist = conn.therapist.user == user
+        if not (is_patient or is_therapist):
+            return None, 'Forbidden.'
+        if conn.status != 'accepted':
+            return None, 'Connection not accepted yet.'
+        return conn, None
+
+    def get(self, request, pk):
+        conn, err = self._get_connection(pk, request.user)
+        if err:
+            return Response({'error': err}, status=404 if err == 'Not found.' else 403)
+        msgs = conn.messages.select_related('sender').all()
+        return Response(DirectMessageSerializer(msgs, many=True).data)
+
+    def post(self, request, pk):
+        conn, err = self._get_connection(pk, request.user)
+        if err:
+            return Response({'error': err}, status=404 if err == 'Not found.' else 403)
+        serializer = DirectMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(connection=conn, sender=request.user)
+        return Response(serializer.data, status=201)

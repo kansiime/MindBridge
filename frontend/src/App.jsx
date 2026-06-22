@@ -1,10 +1,11 @@
 import { authAPI, chatAPI, therapistAPI } from "./api";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const C = {
   bg:"#0A0818", surface:"rgba(255,255,255,0.05)", border:"rgba(255,255,255,0.08)",
   violet:"#7C3AED", violetDim:"#5B21B6", aqua:"#2DD4BF",
   text:"#F1F5F9", muted:"#64748B", subtle:"#94A3B8",
+  green:"#25D366",
 };
 
 const CSS = `
@@ -19,6 +20,10 @@ const CSS = `
   @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
   .mod-card:hover{transform:translateY(-3px);transition:transform .18s;}
   .glass{background:rgba(255,255,255,.05);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);}
+  .btn-primary{background:linear-gradient(135deg,#7C3AED,#5B21B6);color:#fff;border:none;border-radius:12px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;}
+  .btn-ghost{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px 18px;font-size:13px;color:#94A3B8;cursor:pointer;}
+  .tab{background:none;border:none;color:#64748B;font-size:13px;font-weight:600;cursor:pointer;padding:8px 16px;border-radius:50px;}
+  .tab.active{background:rgba(124,58,237,0.15);color:#A78BFA;}
 `;
 
 const MODULES = [
@@ -62,7 +67,7 @@ const INTROS = {
 
 const CRISIS_WORDS = ["suicide","kill myself","self harm","hurt myself","end it all","want to die"];
 
-// ── Shared ───────────────────────────────────────────────────────────────────
+// ── Shared ────────────────────────────────────────────────────────────────────
 function Orb({ colors, size = 100 }) {
   return (
     <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
@@ -87,7 +92,24 @@ function Field({ label, type, value, onChange, placeholder, required = true }) {
   );
 }
 
-// ── Login ────────────────────────────────────────────────────────────────────
+function NavBar({ user, onLogout, tab, onTab, tabs }) {
+  const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
+  return (
+    <div style={{padding:"14px 20px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0,background:C.bg}}>
+      <Orb colors={["#7C3AED","#4F46E5","#2DD4BF"]} size={32}/>
+      <span style={{color:C.text,fontWeight:800,fontSize:17,fontFamily:"Georgia,serif"}}>Mind<span style={{color:C.aqua}}>Bridge</span></span>
+      <div style={{flex:1,display:"flex",gap:4,justifyContent:"center"}}>
+        {tabs.map(t => (
+          <button key={t.id} className={`tab${tab===t.id?" active":""}`} onClick={() => onTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+      <span style={{color:C.muted,fontSize:12}}>Hi, {firstName}</span>
+      <button onClick={onLogout} className="btn-ghost" style={{padding:"5px 12px",fontSize:12}}>Sign out</button>
+    </div>
+  );
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin, onGoRegister }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -98,9 +120,8 @@ function LoginScreen({ onLogin, onGoRegister }) {
     e.preventDefault();
     setLoading(true); setError("");
     const result = await authAPI.login(email, password);
-    if (result.ok) {
-      onLogin(result.user);
-    } else {
+    if (result.ok) { onLogin(result.user); }
+    else {
       const err = result.error;
       setError(err?.detail || err?.non_field_errors?.[0] || err?.email?.[0] || "Invalid email or password");
     }
@@ -108,7 +129,7 @@ function LoginScreen({ onLogin, onGoRegister }) {
   }
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"system-ui,sans-serif"}} className="animate-slide-up">
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"system-ui,sans-serif"}}>
       <style>{CSS}</style>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:32}}>
@@ -137,7 +158,7 @@ function LoginScreen({ onLogin, onGoRegister }) {
   );
 }
 
-// ── Register ─────────────────────────────────────────────────────────────────
+// ── Register ──────────────────────────────────────────────────────────────────
 function RegisterScreen({ onLogin, onGoLogin }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -160,7 +181,7 @@ function RegisterScreen({ onLogin, onGoLogin }) {
   }
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"system-ui,sans-serif"}} className="animate-slide-up">
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"system-ui,sans-serif"}}>
       <style>{CSS}</style>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:32}}>
@@ -189,14 +210,14 @@ function RegisterScreen({ onLogin, onGoLogin }) {
   );
 }
 
-// ── Chat ─────────────────────────────────────────────────────────────────────
+// ── AI Chat Module ─────────────────────────────────────────────────────────────
 function ChatModule({ mod, user, onBack }) {
   const [messages, setMessages] = useState([{id:"intro",role:"assistant",content:INTROS[mod.id]||"How are you feeling?",created_at:new Date().toISOString()}]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [showChips, setShowChips] = useState(true);
   const [crisisVisible, setCrisisVisible] = useState(false);
-  const [handoff, setHandoff] = useState(null); // {therapist, whatsapp_link, reason}
+  const [handoff, setHandoff] = useState(null);
   const [handoffDismissed, setHandoffDismissed] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -206,7 +227,6 @@ function ChatModule({ mod, user, onBack }) {
   useEffect(() => {
     chatAPI.createSession(mod.id).then(data => {
       const sid = data?.id;
-      console.log('[APP] session result:', JSON.stringify(data), '| id:', sid);
       if (sid) {
         sessionIdRef.current = sid;
         if (pendingRef.current) {
@@ -231,12 +251,9 @@ function ChatModule({ mod, user, onBack }) {
     if (CRISIS_WORDS.some(k => text.toLowerCase().includes(k))) setCrisisVisible(true);
 
     const userMsg = {id:Date.now().toString(),role:"user",content:text,created_at:new Date().toISOString()};
-    // Check if handoff should trigger (async, non-blocking)
     if (!handoffDismissed && sessionIdRef.current) {
       therapistAPI.checkHandoff(sessionIdRef.current, mod.id, messages, text).then(result => {
-        if (result.trigger && result.available && !handoffDismissed) {
-          setHandoff(result);
-        }
+        if (result.trigger && result.available && !handoffDismissed) setHandoff(result);
       });
     }
     setMessages(prev => [...prev, userMsg]);
@@ -284,7 +301,6 @@ function ChatModule({ mod, user, onBack }) {
       <style>{CSS}</style>
       <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:500,height:180,background:`radial-gradient(ellipse,${mod.color}14,transparent 70%)`,pointerEvents:"none"}}/>
 
-      {/* Header */}
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0,zIndex:2,position:"relative"}}>
         <button onClick={endSession} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer",lineHeight:1}}>←</button>
         <div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${mod.color},#2DD4BF)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{mod.icon}</div>
@@ -298,7 +314,6 @@ function ChatModule({ mod, user, onBack }) {
         <button onClick={endSession} style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:50,padding:"4px 12px",color:"#F87171",fontSize:11,cursor:"pointer"}}>End</button>
       </div>
 
-      {/* Messages */}
       <div style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:12,zIndex:1,position:"relative"}}>
         {messages.map((msg, i) => {
           const isUser = msg.role === "user";
@@ -318,7 +333,6 @@ function ChatModule({ mod, user, onBack }) {
         <div ref={bottomRef}/>
       </div>
 
-      {/* Chips */}
       <div style={{padding:"0 14px 6px",flexShrink:0,zIndex:2}}>
         {showChips ? (
           <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:2}}>
@@ -331,17 +345,16 @@ function ChatModule({ mod, user, onBack }) {
           </div>
         ) : (
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={() => setShowChips(true)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer"}}>+ Suggestions</button>
-          <button onClick={async () => {
-            const result = await therapistAPI.getAvailable(mod.id);
-            if (result.available) { setHandoff(result); setHandoffDismissed(false); }
-            else { alert("No therapists available right now. Please try again later."); }
-          }} style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:50,padding:"5px 12px",color:"#A78BFA",fontSize:11,cursor:"pointer",fontWeight:600}}>🧑‍⚕️ Talk to therapist</button>
-        </div>
+            <button onClick={() => setShowChips(true)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer"}}>+ Suggestions</button>
+            <button onClick={async () => {
+              const result = await therapistAPI.getAvailable(mod.id);
+              if (result.available) { setHandoff(result); setHandoffDismissed(false); }
+              else alert("No therapists available right now. Please try again later.");
+            }} style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:50,padding:"5px 12px",color:"#A78BFA",fontSize:11,cursor:"pointer",fontWeight:600}}>🧑‍⚕️ Talk to therapist</button>
+          </div>
         )}
       </div>
 
-      {/* Crisis */}
       {crisisVisible && (
         <div style={{padding:"9px 16px",background:"rgba(239,68,68,0.1)",borderTop:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",gap:10,flexShrink:0,zIndex:2}}>
           <span>🚨</span>
@@ -350,11 +363,10 @@ function ChatModule({ mod, user, onBack }) {
         </div>
       )}
 
-      {/* Therapist Handoff Banner */}
       {handoff && !handoffDismissed && (
         <div style={{padding:"12px 16px",background:"linear-gradient(135deg,rgba(124,58,237,0.15),rgba(45,212,191,0.1))",borderTop:"1px solid rgba(124,58,237,0.3)",flexShrink:0,zIndex:3,animation:"fadeUp .4s ease"}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-            <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${handoff.therapist?.photo_url ? "transparent" : "#7C3AED"},#2DD4BF)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,overflow:"hidden"}}>
+            <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,overflow:"hidden"}}>
               {handoff.therapist?.photo_url ? <img src={handoff.therapist.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
             </div>
             <div style={{flex:1,minWidth:0}}>
@@ -362,7 +374,7 @@ function ChatModule({ mod, user, onBack }) {
               <div style={{color:"#94A3B8",fontSize:11,marginTop:2}}>{handoff.therapist?.specializations?.join(" · ") || "Mental Health Specialist"} · Online now</div>
               <div style={{display:"flex",gap:8,marginTop:10}}>
                 <a href={handoff.whatsapp_link} target="_blank" rel="noopener noreferrer"
-                  style={{background:"#25D366",borderRadius:8,padding:"8px 14px",color:"#fff",fontSize:12,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:6}}>
+                  style={{background:C.green,borderRadius:8,padding:"8px 14px",color:"#fff",fontSize:12,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:6}}>
                   💬 Connect on WhatsApp
                 </a>
                 <button onClick={() => setHandoffDismissed(true)}
@@ -376,7 +388,6 @@ function ChatModule({ mod, user, onBack }) {
         </div>
       )}
 
-      {/* Input */}
       <div style={{padding:"10px 14px 18px",borderTop:`1px solid ${C.border}`,display:"flex",gap:9,alignItems:"flex-end",flexShrink:0,zIndex:2,background:C.bg}}>
         <div style={{flex:1,position:"relative"}}>
           {!input && <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",color:"#334155",fontSize:14,pointerEvents:"none"}}>Say anything…</span>}
@@ -393,61 +404,308 @@ function ChatModule({ mod, user, onBack }) {
   );
 }
 
-// ── Home Dashboard ────────────────────────────────────────────────────────────
-function Home({ user, onSelect, onLogout }) {
+// ── Direct Chat (user ↔ therapist) ─────────────────────────────────────────────
+function DirectChat({ connection, currentUser, onBack }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+  const pollRef = useRef(null);
+
+  const therapistName = connection.therapist?.full_name || "Therapist";
+  const therapistPhoto = connection.therapist?.photo_url;
+  const waNumber = connection.therapist?.whatsapp_number?.replace(/[^0-9]/g, "");
+  const patientName = connection.patient_name || currentUser?.name || currentUser?.email?.split("@")[0];
+  const waLink = waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi, I'm ${patientName} — connecting from MindBridge`)}` : null;
+
+  const fetchMessages = useCallback(async () => {
+    const data = await therapistAPI.getDirectMessages(connection.id);
+    if (Array.isArray(data)) setMessages(data);
+  }, [connection.id]);
+
+  useEffect(() => {
+    fetchMessages();
+    pollRef.current = setInterval(fetchMessages, 4000);
+    return () => clearInterval(pollRef.current);
+  }, [fetchMessages]);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages]);
+
+  async function sendMsg() {
+    if (!input.trim() || sending) return;
+    setSending(true);
+    const text = input.trim();
+    setInput("");
+    await therapistAPI.sendDirectMessage(connection.id, text);
+    await fetchMessages();
+    setSending(false);
+  }
+
+  return (
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:C.bg,fontFamily:"system-ui,sans-serif"}}>
+      <style>{CSS}</style>
+      {/* Header */}
+      <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer"}}>←</button>
+        <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
+          {therapistPhoto ? <img src={therapistPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
+        </div>
+        <div style={{flex:1}}>
+          <div style={{color:C.text,fontWeight:700,fontSize:14}}>{therapistName}</div>
+          <div style={{color:C.muted,fontSize:11}}>{connection.therapist?.specializations?.join(" · ") || "Mental Health Specialist"}</div>
+        </div>
+        {waLink && (
+          <a href={waLink} target="_blank" rel="noopener noreferrer"
+            style={{background:C.green,borderRadius:50,padding:"6px 12px",color:"#fff",fontSize:11,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+            💬 WhatsApp
+          </a>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:10}}>
+        {messages.length === 0 && (
+          <div style={{textAlign:"center",color:C.muted,fontSize:13,marginTop:40}}>
+            Say hello to {therapistName} 👋
+          </div>
+        )}
+        {messages.map(msg => {
+          const isMe = msg.sender === currentUser?.id || msg.sender_role === currentUser?.role;
+          return (
+            <div key={msg.id} style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start",gap:8}}>
+              {!isMe && (
+                <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0,marginTop:2}}>
+                  {therapistPhoto ? <img src={therapistPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}}/> : "🧑‍⚕️"}
+                </div>
+              )}
+              <div style={{maxWidth:"75%"}}>
+                <div style={{padding:"10px 14px",fontSize:14,lineHeight:1.6,color:C.text,background:isMe?`linear-gradient(135deg,${C.violet},${C.violetDim})`:"rgba(255,255,255,0.07)",border:isMe?"none":"1px solid rgba(255,255,255,0.1)",borderRadius:isMe?"16px 16px 3px 16px":"16px 16px 16px 3px"}}>
+                  {msg.content}
+                </div>
+                <div style={{color:C.muted,fontSize:10,marginTop:3,textAlign:isMe?"right":"left"}}>
+                  {new Date(msg.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Input */}
+      <div style={{padding:"10px 14px 18px",borderTop:`1px solid ${C.border}`,display:"flex",gap:9,alignItems:"flex-end",background:C.bg,flexShrink:0}}>
+        <div style={{flex:1,position:"relative"}}>
+          {!input && <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",color:"#334155",fontSize:14,pointerEvents:"none"}}>Message {therapistName}…</span>}
+          <textarea value={input}
+            onChange={e => { setInput(e.target.value); e.currentTarget.style.height="auto"; e.currentTarget.style.height=Math.min(e.currentTarget.scrollHeight,100)+"px"; }}
+            onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } }}
+            rows={1}
+            style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1.5px solid ${C.border}`,borderRadius:18,padding:"11px 16px",fontSize:14,color:C.text,outline:"none",resize:"none",fontFamily:"system-ui,sans-serif",lineHeight:1.5,maxHeight:100,display:"block"}}/>
+        </div>
+        <button onClick={sendMsg} disabled={sending || !input.trim()}
+          style={{width:44,height:44,borderRadius:"50%",border:"none",flexShrink:0,fontSize:17,display:"flex",alignItems:"center",justifyContent:"center",cursor:sending||!input.trim()?"default":"pointer",background:sending||!input.trim()?"rgba(255,255,255,0.05)":`linear-gradient(135deg,${C.violet},${C.violetDim})`,color:sending||!input.trim()?"#334155":"#fff"}}>↑</button>
+      </div>
+    </div>
+  );
+}
+
+// ── User Dashboard ─────────────────────────────────────────────────────────────
+function UserDashboard({ user, onSelectModule, onLogout }) {
+  const [tab, setTab] = useState("home");
   const [search, setSearch] = useState("");
+  const [therapists, setTherapists] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [activeConnection, setActiveConnection] = useState(null);
+  const [requesting, setRequesting] = useState(null);
+  const [reqMsg, setReqMsg] = useState("");
+  const [loadingDir, setLoadingDir] = useState(false);
+
   const filtered = MODULES.filter(m => m.label.toLowerCase().includes(search.toLowerCase()) || m.desc.toLowerCase().includes(search.toLowerCase()));
   const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
 
-  async function handleLogout() { await authAPI.logout(); onLogout(); }
+  useEffect(() => {
+    if (tab === "therapists") {
+      setLoadingDir(true);
+      Promise.all([therapistAPI.directory(), therapistAPI.listConnections()]).then(([dir, conns]) => {
+        setTherapists(Array.isArray(dir) ? dir : []);
+        setConnections(Array.isArray(conns) ? conns : []);
+        setLoadingDir(false);
+      });
+    }
+    if (tab === "messages") {
+      therapistAPI.listConnections().then(data => setConnections(Array.isArray(data) ? data : []));
+    }
+  }, [tab]);
+
+  async function sendRequest(therapistId) {
+    const result = await therapistAPI.requestConnection(therapistId, reqMsg);
+    if (result.ok) {
+      setRequesting(null);
+      setReqMsg("");
+      const conns = await therapistAPI.listConnections();
+      setConnections(Array.isArray(conns) ? conns : []);
+      setTab("messages");
+    }
+  }
+
+  if (activeConnection) {
+    return <DirectChat connection={activeConnection} currentUser={user} onBack={() => setActiveConnection(null)}/>;
+  }
+
+  const tabs = [
+    {id:"home", label:"Modules"},
+    {id:"therapists", label:"Find Therapist"},
+    {id:"messages", label:"My Therapist"},
+  ];
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",paddingBottom:80}}>
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",display:"flex",flexDirection:"column"}}>
       <style>{CSS}</style>
+      <NavBar user={user} onLogout={onLogout} tab={tab} onTab={setTab} tabs={tabs}/>
 
-      {/* Header */}
-      <div style={{position:"relative",padding:"28px 20px 20px",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:-80,right:-60,width:280,height:280,borderRadius:"50%",background:"radial-gradient(circle,rgba(124,58,237,0.1),transparent 70%)",pointerEvents:"none"}}/>
-        <div style={{position:"relative",zIndex:1}}>
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
-            <Orb colors={["#7C3AED","#4F46E5","#2DD4BF"]} size={48}/>
-            <div>
-              <div style={{fontSize:10,letterSpacing:"0.18em",color:C.aqua,fontWeight:700,textTransform:"uppercase"}}>Mental wellness</div>
-              <h1 style={{color:C.text,fontSize:22,fontWeight:800,fontFamily:"Georgia,serif"}}>Mind<span style={{color:C.aqua}}>Bridge</span></h1>
-            </div>
-            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
-              <span style={{color:C.muted,fontSize:13}}>Hi, {firstName}</span>
-              <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:50,padding:"5px 12px",color:C.muted,fontSize:12,cursor:"pointer"}}>Sign out</button>
-            </div>
+      {/* ── Modules tab ── */}
+      {tab === "home" && (
+        <div style={{flex:1,overflowY:"auto",padding:"20px 20px 80px"}}>
+          <div style={{marginBottom:16}}>
+            <h2 style={{color:C.text,fontSize:20,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Good to see you, {firstName}</h2>
+            <p style={{color:C.muted,fontSize:13}}>Choose a module to start your session</p>
           </div>
-          <div style={{position:"relative"}}>
+          <div style={{position:"relative",marginBottom:16}}>
             <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:14,color:C.muted}}>🔍</span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…"
               style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:50,padding:"10px 16px 10px 36px",fontSize:14,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
           </div>
-        </div>
-      </div>
-
-      {/* Modules */}
-      <div style={{padding:"0 20px"}}>
-        <div style={{fontSize:11,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>All modules · {filtered.length}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {filtered.map(mod => (
-            <button key={mod.id} className="mod-card" onClick={() => onSelect(mod)}
-              style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",gap:14,textAlign:"left",cursor:"pointer",width:"100%"}}>
-              <div style={{width:44,height:44,borderRadius:14,background:`${mod.color}16`,border:`1px solid ${mod.color}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{mod.icon}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
-                  <span style={{color:C.text,fontWeight:700,fontSize:14,fontFamily:"Georgia,serif"}}>{mod.label}</span>
-                  <span style={{fontSize:10,color:mod.color,background:`${mod.color}14`,border:`1px solid ${mod.color}28`,borderRadius:50,padding:"1px 7px",fontWeight:600,flexShrink:0}}>{mod.tag}</span>
+          <div style={{fontSize:11,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>All modules · {filtered.length}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {filtered.map(mod => (
+              <button key={mod.id} className="mod-card" onClick={() => onSelectModule(mod)}
+                style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:16,padding:"14px 16px",display:"flex",alignItems:"center",gap:14,textAlign:"left",cursor:"pointer",width:"100%"}}>
+                <div style={{width:44,height:44,borderRadius:14,background:`${mod.color}16`,border:`1px solid ${mod.color}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{mod.icon}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                    <span style={{color:C.text,fontWeight:700,fontSize:14,fontFamily:"Georgia,serif"}}>{mod.label}</span>
+                    <span style={{fontSize:10,color:mod.color,background:`${mod.color}14`,border:`1px solid ${mod.color}28`,borderRadius:50,padding:"1px 7px",fontWeight:600,flexShrink:0}}>{mod.tag}</span>
+                  </div>
+                  <div style={{color:C.muted,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{mod.desc}</div>
                 </div>
-                <div style={{color:C.muted,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{mod.desc}</div>
-              </div>
-              <span style={{color:C.muted,fontSize:16,flexShrink:0}}>›</span>
-            </button>
-          ))}
+                <span style={{color:C.muted,fontSize:16,flexShrink:0}}>›</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── Find Therapist tab ── */}
+      {tab === "therapists" && (
+        <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+          <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Find a Therapist</h2>
+          <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Connect with a licensed mental health professional</p>
+          {loadingDir ? (
+            <div style={{display:"flex",justifyContent:"center",paddingTop:40}}><Spinner/></div>
+          ) : therapists.length === 0 ? (
+            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:40}}>No therapists available right now.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {therapists.map(t => {
+                const alreadyConnected = connections.find(c => c.therapist?.id === t.id);
+                return (
+                  <div key={t.id} className="glass" style={{borderRadius:16,padding:16}}>
+                    <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+                      <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
+                        {t.photo_url ? <img src={t.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:22}}>🧑‍⚕️</span>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:C.text,fontWeight:700,fontSize:15}}>{t.full_name}</div>
+                        <div style={{color:C.muted,fontSize:12,marginTop:2}}>{t.credentials}</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>
+                          {(t.specializations||[]).map(s => (
+                            <span key={s} style={{fontSize:10,background:"rgba(124,58,237,0.12)",color:"#A78BFA",borderRadius:50,padding:"2px 8px"}}>{s}</span>
+                          ))}
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:12,marginTop:8}}>
+                          <span style={{color:C.muted,fontSize:11}}>⭐ {t.rating} · {t.years_experience}yr exp</span>
+                          {t.is_currently_available && <span style={{fontSize:10,color:C.aqua,background:"rgba(45,212,191,0.1)",borderRadius:50,padding:"2px 8px"}}>● Available now</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{marginTop:12}}>
+                      {alreadyConnected ? (
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <span style={{fontSize:12,color:alreadyConnected.status==="accepted"?C.aqua:C.muted,background:"rgba(255,255,255,0.05)",borderRadius:8,padding:"6px 12px"}}>
+                            {alreadyConnected.status === "accepted" ? "✓ Connected" : alreadyConnected.status === "pending" ? "⏳ Request pending" : "✗ Declined"}
+                          </span>
+                          {alreadyConnected.status === "accepted" && (
+                            <button className="btn-primary" style={{padding:"6px 14px",fontSize:12}} onClick={() => setActiveConnection(alreadyConnected)}>
+                              Open chat →
+                            </button>
+                          )}
+                        </div>
+                      ) : requesting === t.id ? (
+                        <div>
+                          <textarea value={reqMsg} onChange={e => setReqMsg(e.target.value)} placeholder="Say a bit about what you're looking for (optional)…" rows={2}
+                            style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"none",fontFamily:"system-ui,sans-serif",marginBottom:8}}/>
+                          <div style={{display:"flex",gap:8}}>
+                            <button className="btn-primary" style={{padding:"7px 14px",fontSize:12}} onClick={() => sendRequest(t.id)}>Send request</button>
+                            <button className="btn-ghost" style={{padding:"7px 12px",fontSize:12}} onClick={() => setRequesting(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className="btn-primary" style={{padding:"7px 14px",fontSize:12}} onClick={() => setRequesting(t.id)}>
+                          Connect with {t.full_name.split(" ")[0]}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── My Therapist / messages tab ── */}
+      {tab === "messages" && (
+        <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+          <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>My Therapist</h2>
+          <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Your active connections</p>
+          {connections.length === 0 ? (
+            <div style={{textAlign:"center",padding:"40px 20px"}}>
+              <div style={{fontSize:40,marginBottom:12}}>🧑‍⚕️</div>
+              <p style={{color:C.muted,fontSize:14}}>No connections yet.</p>
+              <button className="btn-primary" style={{marginTop:16}} onClick={() => setTab("therapists")}>Find a therapist</button>
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {connections.map(conn => {
+                const t = conn.therapist;
+                const lastMsg = conn.messages?.[conn.messages.length - 1];
+                return (
+                  <button key={conn.id} onClick={() => conn.status === "accepted" ? setActiveConnection(conn) : null}
+                    style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${conn.status==="accepted"?C.border:"rgba(255,255,255,0.05)"}`,borderRadius:16,padding:14,display:"flex",gap:12,alignItems:"center",textAlign:"left",cursor:conn.status==="accepted"?"pointer":"default",width:"100%",opacity:conn.status==="declined"?0.5:1}}>
+                    <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
+                      {t?.photo_url ? <img src={t.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                        <span style={{color:C.text,fontWeight:700,fontSize:14}}>{t?.full_name || "Therapist"}</span>
+                        <span style={{fontSize:10,padding:"2px 7px",borderRadius:50,fontWeight:600,
+                          background:conn.status==="accepted"?"rgba(45,212,191,0.1)":conn.status==="pending"?"rgba(245,158,11,0.1)":"rgba(239,68,68,0.1)",
+                          color:conn.status==="accepted"?C.aqua:conn.status==="pending"?"#FCD34D":"#F87171"}}>
+                          {conn.status}
+                        </span>
+                      </div>
+                      <div style={{color:C.muted,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {lastMsg ? lastMsg.content : conn.message || "No messages yet"}
+                      </div>
+                    </div>
+                    {conn.status === "accepted" && <span style={{color:C.muted,fontSize:16}}>›</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Crisis footer */}
       <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"10px 20px",background:"rgba(10,8,24,0.95)",backdropFilter:"blur(12px)",borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,zIndex:50}}>
@@ -458,7 +716,183 @@ function Home({ user, onSelect, onLogout }) {
   );
 }
 
-// ── Root ─────────────────────────────────────────────────────────────────────
+// ── Therapist Dashboard ────────────────────────────────────────────────────────
+function TherapistDashboard({ user, onLogout }) {
+  const [tab, setTab] = useState("patients");
+  const [portal, setPortal] = useState(null);
+  const [connections, setConnections] = useState([]);
+  const [activeConnection, setActiveConnection] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const [p, conns] = await Promise.all([therapistAPI.portal(), therapistAPI.listConnections()]);
+    setPortal(p);
+    setConnections(Array.isArray(conns) ? conns : []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  async function respond(connId, action) {
+    await therapistAPI.respondConnection(connId, action);
+    loadData();
+  }
+
+  if (activeConnection) {
+    return <DirectChat connection={activeConnection} currentUser={user} onBack={() => { setActiveConnection(null); loadData(); }}/>;
+  }
+
+  const pending = connections.filter(c => c.status === "pending");
+  const accepted = connections.filter(c => c.status === "accepted");
+
+  const tabs = [
+    {id:"patients", label:"Patients"},
+    {id:"requests", label:`Requests${pending.length ? ` (${pending.length})` : ""}`},
+    {id:"messages", label:"Messages"},
+  ];
+
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",display:"flex",flexDirection:"column"}}>
+      <style>{CSS}</style>
+      <NavBar user={user} onLogout={onLogout} tab={tab} onTab={setTab} tabs={tabs}/>
+
+      {loading && (
+        <div style={{display:"flex",justifyContent:"center",paddingTop:60}}><Spinner/></div>
+      )}
+
+      {/* ── Patients tab ── */}
+      {!loading && tab === "patients" && (
+        <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+          <div style={{marginBottom:20}}>
+            <h2 style={{color:C.text,fontSize:20,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Welcome, {firstName}</h2>
+            <p style={{color:C.muted,fontSize:13}}>Your active patients and sessions</p>
+          </div>
+
+          {/* Stats */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+            {[
+              {label:"Active patients", value: portal?.active_patients ?? 0, color:C.aqua},
+              {label:"Pending requests", value: pending.length, color:"#FCD34D"},
+              {label:"Open chats", value: accepted.length, color:C.violet},
+            ].map(s => (
+              <div key={s.label} className="glass" style={{borderRadius:14,padding:"12px 14px",textAlign:"center"}}>
+                <div style={{fontSize:22,fontWeight:800,color:s.color}}>{s.value}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {(!portal?.patients || portal.patients.length === 0) ? (
+            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:30}}>No active patients yet.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {portal.patients.map(p => (
+                <div key={p.patient_id} className="glass" style={{borderRadius:14,padding:14}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${C.violet},${C.aqua})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:"#fff",fontWeight:700}}>
+                      {(p.patient_name||"?")[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>{p.patient_name}</div>
+                      <div style={{color:C.muted,fontSize:11}}>{p.patient_email}</div>
+                    </div>
+                    {p.last_mood && <span style={{marginLeft:"auto",fontSize:11,color:C.muted}}>Mood: {p.last_mood}</span>}
+                  </div>
+                  {p.recent_sessions?.length > 0 && (
+                    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4}}>
+                      <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Recent sessions</div>
+                      {p.recent_sessions.slice(0,2).map(s => (
+                        <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                          {s.crisis_flag && <span style={{fontSize:10,color:"#F87171"}}>🚨</span>}
+                          <span style={{fontSize:11,color:C.subtle,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.summary || s.module}</span>
+                          <span style={{fontSize:10,color:C.muted}}>{new Date(s.created_at).toLocaleDateString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Requests tab ── */}
+      {!loading && tab === "requests" && (
+        <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+          <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Connection Requests</h2>
+          <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Patients who want to connect with you</p>
+          {pending.length === 0 ? (
+            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:30}}>No pending requests.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {pending.map(conn => (
+                <div key={conn.id} className="glass" style={{borderRadius:14,padding:14}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:conn.message?8:12}}>
+                    <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.violet},${C.aqua})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,color:"#fff",fontWeight:700,flexShrink:0}}>
+                      {(conn.patient_name||"?")[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>{conn.patient_name}</div>
+                      <div style={{color:C.muted,fontSize:11}}>{conn.patient_email}</div>
+                    </div>
+                    <span style={{marginLeft:"auto",color:C.muted,fontSize:11}}>{new Date(conn.created_at).toLocaleDateString()}</span>
+                  </div>
+                  {conn.message && (
+                    <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px",fontSize:13,color:C.subtle,marginBottom:10,fontStyle:"italic"}}>
+                      "{conn.message}"
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:8}}>
+                    <button className="btn-primary" style={{padding:"7px 14px",fontSize:12}} onClick={() => respond(conn.id, "accept")}>Accept</button>
+                    <button className="btn-ghost" style={{padding:"7px 12px",fontSize:12}} onClick={() => respond(conn.id, "decline")}>Decline</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Messages tab ── */}
+      {!loading && tab === "messages" && (
+        <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+          <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Messages</h2>
+          <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Your active patient conversations</p>
+          {accepted.length === 0 ? (
+            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:30}}>No active conversations. Accept requests to start chatting.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {accepted.map(conn => {
+                const lastMsg = conn.messages?.[conn.messages.length - 1];
+                return (
+                  <button key={conn.id} onClick={() => setActiveConnection(conn)}
+                    style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:14,padding:14,display:"flex",gap:12,alignItems:"center",textAlign:"left",cursor:"pointer",width:"100%"}}>
+                    <div style={{width:42,height:42,borderRadius:"50%",background:`linear-gradient(135deg,${C.violet},${C.aqua})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#fff",fontWeight:700,flexShrink:0}}>
+                      {(conn.patient_name||"?")[0].toUpperCase()}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:2}}>{conn.patient_name}</div>
+                      <div style={{color:C.muted,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {lastMsg ? lastMsg.content : "No messages yet"}
+                      </div>
+                    </div>
+                    <span style={{color:C.muted,fontSize:16}}>›</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("login");
   const [user, setUser] = useState(null);
@@ -471,6 +905,8 @@ export default function App() {
     } else { setLoading(false); }
   }, []);
 
+  function handleLogout() { authAPI.logout(); setUser(null); setScreen("login"); }
+
   if (loading) return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <style>{CSS}</style>
@@ -480,7 +916,23 @@ export default function App() {
 
   if (screen === "register") return <RegisterScreen onLogin={u => { setUser(u); setScreen("home"); }} onGoLogin={() => setScreen("login")}/>;
   if (screen === "login")    return <LoginScreen    onLogin={u => { setUser(u); setScreen("home"); }} onGoRegister={() => setScreen("register")}/>;
-  if (screen === "module" && activeModule) return <ChatModule mod={activeModule} user={user} onBack={() => { setActiveModule(null); setScreen("home"); }}/>;
 
-  return <Home user={user} onSelect={mod => { setActiveModule(mod); setScreen("module"); }} onLogout={() => { setUser(null); setScreen("login"); }}/>;
+  if (screen === "module" && activeModule) {
+    return <ChatModule mod={activeModule} user={user} onBack={() => { setActiveModule(null); setScreen("home"); }}/>;
+  }
+
+  if (screen === "home") {
+    if (user?.role === "therapist" || user?.role === "admin") {
+      return <TherapistDashboard user={user} onLogout={handleLogout}/>;
+    }
+    return (
+      <UserDashboard
+        user={user}
+        onSelectModule={mod => { setActiveModule(mod); setScreen("module"); }}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  return null;
 }
