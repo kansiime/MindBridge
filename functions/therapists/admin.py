@@ -1,7 +1,7 @@
 import secrets
 from django.contrib import admin
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import format_html, mark_safe
 from django.contrib import messages
 from .models import TherapistProfile, TherapistApplication, PatientAssignment, HandoffEvent
 
@@ -74,8 +74,8 @@ class TherapistApplicationAdmin(admin.ModelAdmin):
                 obj.id,
             )
         if obj.status == 'approved':
-            return format_html('<b style="color:green">Approved</b>')
-        return format_html('<b style="color:red">Rejected</b>')
+            return mark_safe('<b style="color:green">Approved</b>')
+        return mark_safe('<b style="color:red">Rejected</b>')
 
     action_btn.short_description = 'Action'
 
