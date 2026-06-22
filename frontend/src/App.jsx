@@ -228,7 +228,7 @@ function playNotifSound() {
 }
 
 // ── AI Chat Module ─────────────────────────────────────────────────────────────
-function ChatModule({ mod, user, onBack }) {
+function ChatModule({ mod, user, onBack, onOpenTherapists }) {
   const [messages, setMessages] = useState([{id:"intro",role:"assistant",content:INTROS[mod.id]||"How are you feeling?",created_at:new Date().toISOString()}]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -237,7 +237,9 @@ function ChatModule({ mod, user, onBack }) {
   const [handoff, setHandoff] = useState(null);
   const [handoffDismissed, setHandoffDismissed] = useState(false);
   const [inAppChat, setInAppChat] = useState(null);
-  const [therapistModal, setTherapistModal] = useState(null); // {accepted?, available}
+  const [therapistModal, setTherapistModal] = useState(null);
+  const [requestSent, setRequestSent] = useState(null); // { therapistName }
+  const [sendingReq, setSendingReq] = useState(null); // therapist id being requested
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sessionIdRef = useRef(null);
@@ -316,14 +318,35 @@ function ChatModule({ mod, user, onBack }) {
   async function handleTalkToTherapist() {
     setTherapistModal({ loading: true });
     try {
-      const [conns, available] = await Promise.all([
+      const [conns, available, dir] = await Promise.all([
         therapistAPI.listConnections(),
         therapistAPI.getAvailable(mod.id),
+        therapistAPI.directory(),
       ]);
-      const accepted = (Array.isArray(conns) ? conns : []).find(c => c.status === 'accepted');
-      setTherapistModal({ loading: false, accepted: accepted || null, available: available || { available: false } });
+      const allConns = Array.isArray(conns) ? conns : [];
+      const accepted = allConns.filter(c => c.status === 'accepted');
+      const pending  = allConns.filter(c => c.status === 'pending');
+      setTherapistModal({
+        loading: false,
+        accepted,
+        pending,
+        available: available || { available: false },
+        directory: Array.isArray(dir) ? dir : [],
+        allConns,
+      });
     } catch {
-      setTherapistModal({ loading: false, accepted: null, available: { available: false } });
+      setTherapistModal({ loading: false, accepted: [], pending: [], available: { available: false }, directory: [], allConns: [] });
+    }
+  }
+
+  async function sendRequestFromModal(therapistId, therapistName) {
+    setSendingReq(therapistId);
+    const result = await therapistAPI.requestConnection(therapistId, '');
+    setSendingReq(null);
+    if (result.ok) {
+      setTherapistModal(null);
+      setRequestSent({ therapistName });
+      setTimeout(() => setRequestSent(null), 6000);
     }
   }
 
@@ -369,6 +392,17 @@ function ChatModule({ mod, user, onBack }) {
         })}
         <div ref={bottomRef}/>
       </div>
+
+      {requestSent && (
+        <div style={{padding:"10px 16px",background:"linear-gradient(135deg,rgba(45,212,191,0.12),rgba(124,58,237,0.08))",borderTop:"1px solid rgba(45,212,191,0.25)",display:"flex",alignItems:"center",gap:10,flexShrink:0,animation:"fadeUp .3s ease"}}>
+          <span style={{fontSize:18}}>✅</span>
+          <div style={{flex:1}}>
+            <span style={{color:C.aqua,fontWeight:700,fontSize:13}}>Request sent to {requestSent.therapistName}! </span>
+            <span style={{color:C.muted,fontSize:12}}>You'll be notified when they accept — keep chatting here.</span>
+          </div>
+          <button onClick={() => setRequestSent(null)} style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer"}}>×</button>
+        </div>
+      )}
 
       <div style={{padding:"0 14px 6px",flexShrink:0,zIndex:2}}>
         {showChips ? (
@@ -437,58 +471,114 @@ function ChatModule({ mod, user, onBack }) {
       {/* ── Therapist modal ── */}
       {therapistModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={() => setTherapistModal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{background:"#13102A",borderRadius:"24px 24px 0 0",padding:"24px 20px 32px",width:"100%",maxWidth:480,animation:"slideUp .25s ease"}}>
+          <div onClick={e => e.stopPropagation()} style={{background:"#13102A",borderRadius:"24px 24px 0 0",padding:"24px 20px 32px",width:"100%",maxWidth:520,maxHeight:"80vh",overflowY:"auto",animation:"slideUp .25s ease"}}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.15)",borderRadius:2,margin:"0 auto 20px"}}/>
-            <h3 style={{color:C.text,fontSize:17,fontWeight:800,marginBottom:6,fontFamily:"Georgia,serif"}}>Talk to a therapist</h3>
-            <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Choose how you'd like to connect</p>
+            <h3 style={{color:C.text,fontSize:17,fontWeight:800,marginBottom:4,fontFamily:"Georgia,serif"}}>Talk to a therapist</h3>
 
             {therapistModal.loading ? (
-              <div style={{display:"flex",justifyContent:"center",padding:"20px 0"}}><Spinner/></div>
-            ) : (
+              <div style={{display:"flex",justifyContent:"center",padding:"30px 0"}}><Spinner/></div>
+            ) : therapistModal.accepted?.length > 0 ? (
+              /* ── Already connected to one or more therapists ── */
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {/* In-app chat if already connected */}
-                {therapistModal.accepted && (
-                  <button onClick={() => { setTherapistModal(null); setInAppChat(therapistModal.accepted); }}
-                    style={{background:"linear-gradient(135deg,rgba(124,58,237,0.2),rgba(45,212,191,0.1))",border:"1px solid rgba(124,58,237,0.4)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
+                <p style={{color:C.muted,fontSize:13,marginBottom:8}}>Open an in-app chat with your therapist</p>
+                {therapistModal.accepted.map(conn => (
+                  <button key={conn.id} onClick={() => { setTherapistModal(null); setInAppChat(conn); }}
+                    style={{background:"linear-gradient(135deg,rgba(124,58,237,0.18),rgba(45,212,191,0.08))",border:"1px solid rgba(124,58,237,0.35)",borderRadius:14,padding:"13px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
                     <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,overflow:"hidden",flexShrink:0}}>
-                      {therapistModal.accepted.therapist?.photo_url ? <img src={therapistModal.accepted.therapist.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
+                      {conn.therapist?.photo_url ? <img src={conn.therapist.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Chat with {therapistModal.accepted.therapist?.full_name || "your therapist"}</div>
-                      <div style={{color:C.aqua,fontSize:11,marginTop:2}}>💬 In-app · Private & secure</div>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>{conn.therapist?.full_name || "Therapist"}</div>
+                      <div style={{color:C.muted,fontSize:11,marginTop:1}}>{(conn.therapist?.specializations||[]).join(" · ") || "Mental Health Specialist"}</div>
                     </div>
-                    <span style={{color:C.aqua,fontSize:18}}>›</span>
+                    <span style={{color:C.aqua,fontSize:11,fontWeight:700,background:"rgba(45,212,191,0.1)",padding:"3px 9px",borderRadius:50}}>💬 Chat</span>
                   </button>
-                )}
-
-                {/* WhatsApp if therapist available */}
+                ))}
+                {/* WhatsApp instant option */}
                 {therapistModal.available?.available && (
                   <a href={therapistModal.available.whatsapp_link} target="_blank" rel="noopener noreferrer"
-                    style={{background:`rgba(37,211,102,0.1)`,border:"1px solid rgba(37,211,102,0.3)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textDecoration:"none"}}>
-                    <div style={{width:40,height:40,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>💬</div>
+                    style={{background:"rgba(37,211,102,0.08)",border:"1px solid rgba(37,211,102,0.25)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,textDecoration:"none",marginTop:2}}>
+                    <span style={{fontSize:22}}>💬</span>
                     <div style={{flex:1}}>
-                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Connect via WhatsApp</div>
-                      <div style={{color:"#4ADE80",fontSize:11,marginTop:2}}>{therapistModal.available.therapist?.full_name || "Therapist"} · Available now</div>
+                      <div style={{color:C.text,fontWeight:700,fontSize:13}}>Talk on WhatsApp right now</div>
+                      <div style={{color:"#4ADE80",fontSize:11}}>{therapistModal.available.therapist?.full_name} · Available</div>
                     </div>
-                    <span style={{color:"#4ADE80",fontSize:18}}>›</span>
                   </a>
                 )}
+                {/* Browse all */}
+                <button onClick={() => { setTherapistModal(null); onOpenTherapists?.(); }}
+                  style={{background:"none",border:`1px dashed ${C.border}`,borderRadius:14,padding:"11px 16px",color:C.muted,fontSize:13,cursor:"pointer",marginTop:4}}>
+                  🔍 Browse all therapists
+                </button>
+              </div>
+            ) : (
+              /* ── Not connected yet ── */
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {/* How it works */}
+                <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:12,padding:"12px 14px",marginBottom:4}}>
+                  <div style={{color:C.subtle,fontSize:12,fontWeight:700,marginBottom:6}}>HOW IT WORKS</div>
+                  <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                    {["1 · Request","2 · They accept","3 · Chat in-app"].map((s,i) => (
+                      <div key={i} style={{flex:1,textAlign:"center"}}>
+                        <div style={{fontSize:18,marginBottom:3}}>["🙋","✅","💬"][i]</div>
+                        <div style={{color:C.muted,fontSize:11}}>{s}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{color:C.muted,fontSize:11,marginTop:8}}>Your AI session stays open while you wait.</p>
+                </div>
 
-                {/* Request connection if not yet connected */}
-                {!therapistModal.accepted && (
-                  <button onClick={() => { setTherapistModal(null); onBack(); }}
-                    style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
-                    <div style={{width:40,height:40,borderRadius:"50%",background:"rgba(124,58,237,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔍</div>
-                    <div style={{flex:1}}>
-                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Find & connect with a therapist</div>
-                      <div style={{color:C.muted,fontSize:11,marginTop:2}}>Browse licensed professionals</div>
-                    </div>
-                    <span style={{color:C.muted,fontSize:18}}>›</span>
-                  </button>
+                {/* Top therapists from directory */}
+                {therapistModal.directory.length > 0 && (
+                  <>
+                    <p style={{color:C.subtle,fontSize:12,fontWeight:700,letterSpacing:"0.05em"}}>AVAILABLE THERAPISTS</p>
+                    {therapistModal.directory.slice(0, 3).map(t => {
+                      const conn = therapistModal.allConns.find(c => c.therapist?.id === t.id);
+                      const isPending = conn?.status === 'pending';
+                      return (
+                        <div key={t.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:12}}>
+                          <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
+                            {t.photo_url ? <img src={t.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:18}}>🧑‍⚕️</span>}
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{color:C.text,fontWeight:700,fontSize:13}}>{t.full_name}</div>
+                            <div style={{color:C.muted,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(t.specializations||[]).join(" · ")}</div>
+                          </div>
+                          {isPending ? (
+                            <span style={{fontSize:11,color:"#FCD34D",background:"rgba(245,158,11,0.1)",borderRadius:50,padding:"4px 10px",flexShrink:0}}>⏳ Pending</span>
+                          ) : (
+                            <button onClick={() => sendRequestFromModal(t.id, t.full_name)} disabled={sendingReq === t.id}
+                              style={{background:`linear-gradient(135deg,${C.violet},${C.violetDim})`,border:"none",borderRadius:50,padding:"6px 14px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,opacity:sendingReq===t.id?0.6:1}}>
+                              {sendingReq === t.id ? "…" : "Request"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
 
-                {!therapistModal.accepted && !therapistModal.available?.available && (
-                  <p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"8px 0"}}>No therapists available right now — try again later or connect in-app.</p>
+                {/* Browse all */}
+                <button onClick={() => { setTherapistModal(null); onOpenTherapists?.(); }}
+                  style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",width:"100%",textAlign:"left"}}>
+                  <span style={{fontSize:18}}>🔍</span>
+                  <div style={{flex:1}}>
+                    <div style={{color:C.text,fontWeight:700,fontSize:13}}>Browse all therapists</div>
+                    <div style={{color:C.muted,fontSize:11}}>Filter by specialization · Full profiles</div>
+                  </div>
+                  <span style={{color:C.muted,fontSize:16}}>›</span>
+                </button>
+
+                {/* WhatsApp instant fallback */}
+                {therapistModal.available?.available && (
+                  <a href={therapistModal.available.whatsapp_link} target="_blank" rel="noopener noreferrer"
+                    style={{background:"rgba(37,211,102,0.08)",border:"1px solid rgba(37,211,102,0.25)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,textDecoration:"none"}}>
+                    <span style={{fontSize:20}}>💬</span>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:13}}>Talk on WhatsApp right now</div>
+                      <div style={{color:"#4ADE80",fontSize:11}}>Instant · No waiting for acceptance</div>
+                    </div>
+                  </a>
                 )}
               </div>
             )}
@@ -644,8 +734,11 @@ function DirectChat({ connection, currentUser, onBack }) {
 }
 
 // ── User Dashboard ─────────────────────────────────────────────────────────────
-function UserDashboard({ user, onSelectModule, onLogout }) {
-  const [tab, setTab] = useState("home");
+const SPECS = ['anxiety','trauma','grief','burnout','adhd','recovery','sleep','postpartum','social'];
+const SPEC_LABELS = {anxiety:'Anxiety',trauma:'Trauma',grief:'Grief',burnout:'Burnout',adhd:'ADHD',recovery:'Recovery',sleep:'Sleep',postpartum:'Postpartum',social:'Social'};
+
+function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home" }) {
+  const [tab, setTab] = useState(initialTab);
   const [search, setSearch] = useState("");
   const [therapists, setTherapists] = useState([]);
   const [connections, setConnections] = useState([]);
@@ -653,6 +746,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
   const [requesting, setRequesting] = useState(null);
   const [reqMsg, setReqMsg] = useState("");
   const [loadingDir, setLoadingDir] = useState(false);
+  const [specFilter, setSpecFilter] = useState("");
 
   const filtered = MODULES.filter(m => m.label.toLowerCase().includes(search.toLowerCase()) || m.desc.toLowerCase().includes(search.toLowerCase()));
   const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
@@ -660,7 +754,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
   useEffect(() => {
     if (tab === "therapists") {
       setLoadingDir(true);
-      Promise.all([therapistAPI.directory(), therapistAPI.listConnections()]).then(([dir, conns]) => {
+      Promise.all([therapistAPI.directory(specFilter), therapistAPI.listConnections()]).then(([dir, conns]) => {
         setTherapists(Array.isArray(dir) ? dir : []);
         setConnections(Array.isArray(conns) ? conns : []);
         setLoadingDir(false);
@@ -669,7 +763,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
     if (tab === "messages") {
       therapistAPI.listConnections().then(data => setConnections(Array.isArray(data) ? data : []));
     }
-  }, [tab]);
+  }, [tab, specFilter]);
 
   async function sendRequest(therapistId) {
     const result = await therapistAPI.requestConnection(therapistId, reqMsg);
@@ -733,11 +827,29 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
       {tab === "therapists" && (
         <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
           <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Find a Therapist</h2>
-          <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Connect with a licensed mental health professional</p>
+          <p style={{color:C.muted,fontSize:13,marginBottom:12}}>Connect with a licensed mental health professional</p>
+          {/* Specialization filter chips */}
+          <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:16,WebkitOverflowScrolling:"touch"}}>
+            <button onClick={() => setSpecFilter("")}
+              style={{flexShrink:0,borderRadius:50,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
+                background:specFilter===""?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
+                borderColor:specFilter===""?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)",
+                color:specFilter===""?"#A78BFA":C.muted}}>All</button>
+            {SPECS.map(s => (
+              <button key={s} onClick={() => setSpecFilter(s === specFilter ? "" : s)}
+                style={{flexShrink:0,borderRadius:50,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
+                  background:specFilter===s?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
+                  borderColor:specFilter===s?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)",
+                  color:specFilter===s?"#A78BFA":C.muted}}>{SPEC_LABELS[s]}</button>
+            ))}
+          </div>
           {loadingDir ? (
             <div style={{display:"flex",justifyContent:"center",paddingTop:40}}><Spinner/></div>
           ) : therapists.length === 0 ? (
-            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:40}}>No therapists available right now.</div>
+            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:40}}>
+              {specFilter ? `No therapists found for "${SPEC_LABELS[specFilter]}".` : "No therapists available right now."}
+              {specFilter && <div style={{marginTop:10}}><button onClick={() => setSpecFilter("")} style={{background:"none",border:"none",color:C.aqua,cursor:"pointer",fontSize:13}}>Clear filter</button></div>}
+            </div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {therapists.map(t => {
@@ -1168,6 +1280,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [activeModule, setActiveModule] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [defaultUserTab, setDefaultUserTab] = useState("home");
 
   useEffect(() => {
     if (authAPI.isLoggedIn()) {
@@ -1188,7 +1301,11 @@ export default function App() {
   if (screen === "login")    return <LoginScreen    onLogin={u => { setUser(u); setScreen("home"); }} onGoRegister={() => setScreen("register")}/>;
 
   if (screen === "module" && activeModule) {
-    return <ChatModule mod={activeModule} user={user} onBack={() => { setActiveModule(null); setScreen("home"); }}/>;
+    return <ChatModule
+      mod={activeModule} user={user}
+      onBack={() => { setActiveModule(null); setScreen("home"); }}
+      onOpenTherapists={() => { setDefaultUserTab("therapists"); setActiveModule(null); setScreen("home"); }}
+    />;
   }
 
   if (screen === "home") {
@@ -1198,7 +1315,8 @@ export default function App() {
     return (
       <UserDashboard
         user={user}
-        onSelectModule={mod => { setActiveModule(mod); setScreen("module"); }}
+        initialTab={defaultUserTab}
+        onSelectModule={mod => { setDefaultUserTab("home"); setActiveModule(mod); setScreen("module"); }}
         onLogout={handleLogout}
       />
     );
