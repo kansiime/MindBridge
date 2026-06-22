@@ -96,6 +96,10 @@ def find_available_therapist(module_id: str):
     # Filter by availability (working hours + capacity)
     available = [t for t in approved if t.is_currently_available()]
 
+    # Fall back to any approved therapist under capacity if none are in working hours
+    if not available:
+        available = [t for t in approved if t.active_patient_count < t.max_patients]
+
     if not available:
         return None
 
