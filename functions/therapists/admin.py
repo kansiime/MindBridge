@@ -7,7 +7,6 @@ from .models import TherapistProfile, TherapistApplication, PatientAssignment, H
 
 
 def do_approve(request, app):
-    """Approve a therapist application and create their account."""
     from users.models import User
 
     if app.status == 'approved':
@@ -25,7 +24,7 @@ def do_approve(request, app):
         user.role = 'therapist'
         user.save()
     else:
-        temp_password = '[user exists - reset via admin]'
+        temp_password = '[user exists - use Reset Password action]'
 
     TherapistProfile.objects.get_or_create(
         user=user,
@@ -56,50 +55,48 @@ def do_approve(request, app):
     app.review_notes = 'Approved by ' + request.user.email
     app.save()
 
-    msg = (
-        '✓ ' + app.full_name + ' approved! '
-        + 'LOGIN URL: mindbridge-frontend-18an.onrender.com | '
-        + 'EMAIL: ' + app.email + ' | '
-        + 'PASSWORD: ' + temp_password + ' | '
-        + 'WHATSAPP: ' + app.whatsapp_number
-        + ' — Share these credentials with the therapist manually.'
+    messages.success(
+        request,
+        'APPROVED: ' + app.full_name
+        + ' | Email: ' + app.email
+        + ' | Password: ' + temp_password
+        + ' | WhatsApp: ' + app.whatsapp_number
+        + ' | Share these with the therapist.',
     )
-    messages.success(request, msg)
 
 
 @admin.register(TherapistApplication)
 class TherapistApplicationAdmin(admin.ModelAdmin):
-    list_display = ['full_name', 'email', 'phone', 'status', 'created_at', 'approve_btn']
+    list_display = ['full_name', 'email', 'phone', 'status', 'created_at', 'action_btn']
     list_filter = ['status']
     search_fields = ['full_name', 'email']
     readonly_fields = ['created_at', 'reviewed_at']
 
-    def approve_btn(self, obj):
+    def action_btn(self, obj):
         if obj.status == 'pending':
             return format_html(
-                '<a class="button" style="background:#7C3AED;color:#fff;'
-                'padding:4px 12px;border-radius:4px;text-decoration:none;font-weight:bold" '
-                'href="/admin/therapists/therapistapplication/{}/approve/">'
-                'Approve</a>',
+                '<a href="/admin/therapists/therapistapplication/{}/approve/"'
+                ' style="background:#7C3AED;color:#fff;padding:4px 12px;'
+                'border-radius:4px;text-decoration:none;font-weight:bold">Approve</a>',
                 obj.id,
             )
         if obj.status == 'approved':
-            return format_html('<span style="color:#10B981;font-weight:bold">Approved</span>')
-        return format_html('<span style="color:#EF4444">Rejected</span>')
+            return format_html('<b style="color:green">Approved</b>')
+        return format_html('<b style="color:red">Rejected</b>')
 
-    approve_btn.short_description = 'Action'
+    action_btn.short_description = 'Action'
+    action_btn.allow_tags = True
 
     def get_urls(self):
         from django.urls import path
         urls = super().get_urls()
-        custom = [
+        return [
             path(
                 '<uuid:pk>/approve/',
                 self.admin_site.admin_view(self.approve_view),
                 name='approve_therapist',
             ),
-        ]
-        return custom + urls
+        ] + urls
 
     def approve_view(self, request, pk):
         from django.shortcuts import redirect
@@ -109,7 +106,7 @@ class TherapistApplicationAdmin(admin.ModelAdmin):
         except TherapistApplication.DoesNotExist:
             messages.error(request, 'Application not found.')
         except Exception as e:
-            messages.error(request, 'Error: ' + str(e))
+            messages.error(request, 'Error approving: ' + str(e))
         return redirect('/admin/therapists/therapistapplication/')
 
     def approve_selected(self, request, queryset):
@@ -122,14 +119,19 @@ class TherapistApplicationAdmin(admin.ModelAdmin):
 
 @admin.register(TherapistProfile)
 class TherapistProfileAdmin(admin.ModelAdmin):
-    list_display = [
-        'full_name', 'status', 'active_patient_count',
-        'rating', 'is_available', 'whatsapp_number',
-    ]
+    list_display = ['therapist_name', 'therapist_email', 'status', 'rating', 'is_available', 'whatsapp_number']
     list_filter = ['status', 'is_available']
     search_fields = ['user__name', 'user__email']
-    readonly_fields = ['created_at', 'updated_at', 'approved_at', 'active_patient_count']
+    readonly_fields = ['created_at', 'updated_at', 'approved_at']
     actions = ['reset_password']
+
+    def therapist_name(self, obj):
+        return obj.user.name or obj.user.email
+    therapist_name.short_description = 'Name'
+
+    def therapist_email(self, obj):
+        return obj.user.email
+    therapist_email.short_description = 'Email'
 
     def reset_password(self, request, queryset):
         for profile in queryset:
@@ -138,12 +140,12 @@ class TherapistProfileAdmin(admin.ModelAdmin):
             profile.user.save()
             messages.success(
                 request,
-                'Password reset for ' + profile.full_name
+                'Password reset for ' + (profile.user.name or profile.user.email)
                 + ': ' + new_pwd
-                + ' — share via WhatsApp: ' + profile.whatsapp_number,
+                + ' | WhatsApp: ' + profile.whatsapp_number,
             )
 
-    reset_password.short_description = 'Reset password (shows new password)'
+    reset_password.short_description = 'Reset password (shows new password in message)'
 
 
 @admin.register(PatientAssignment)
