@@ -412,11 +412,25 @@ function DirectChat({ connection, currentUser, onBack }) {
   const bottomRef = useRef(null);
   const pollRef = useRef(null);
 
+  const isTherapist = currentUser?.role === 'therapist' || currentUser?.role === 'admin';
   const therapistName = connection.therapist?.full_name || "Therapist";
   const therapistPhoto = connection.therapist?.photo_url;
+  const patientName = connection.patient_name || "Patient";
   const waNumber = connection.therapist?.whatsapp_number?.replace(/[^0-9]/g, "");
-  const patientName = connection.patient_name || currentUser?.name || currentUser?.email?.split("@")[0];
-  const waLink = waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi, I'm ${patientName} — connecting from MindBridge`)}` : null;
+
+  // Header shows who you're chatting WITH
+  const partnerName = isTherapist ? patientName : therapistName;
+  const partnerPhoto = isTherapist ? null : therapistPhoto;
+  const partnerSubs = isTherapist
+    ? (connection.patient_email || "")
+    : (connection.therapist?.specializations?.join(" · ") || "Mental Health Specialist");
+
+  const myName = isTherapist
+    ? (currentUser?.name || currentUser?.email?.split("@")[0])
+    : patientName;
+  const waLink = (!isTherapist && waNumber)
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi, I'm ${myName} — connecting from MindBridge`)}`
+    : null;
 
   const fetchMessages = useCallback(async () => {
     const data = await therapistAPI.getDirectMessages(connection.id);
@@ -448,11 +462,11 @@ function DirectChat({ connection, currentUser, onBack }) {
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer"}}>←</button>
         <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
-          {therapistPhoto ? <img src={therapistPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
+          {partnerPhoto ? <img src={partnerPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (isTherapist ? "👤" : "🧑‍⚕️")}
         </div>
         <div style={{flex:1}}>
-          <div style={{color:C.text,fontWeight:700,fontSize:14}}>{therapistName}</div>
-          <div style={{color:C.muted,fontSize:11}}>{connection.therapist?.specializations?.join(" · ") || "Mental Health Specialist"}</div>
+          <div style={{color:C.text,fontWeight:700,fontSize:14}}>{partnerName}</div>
+          <div style={{color:C.muted,fontSize:11}}>{partnerSubs}</div>
         </div>
         {waLink && (
           <a href={waLink} target="_blank" rel="noopener noreferrer"
@@ -466,7 +480,7 @@ function DirectChat({ connection, currentUser, onBack }) {
       <div style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:10}}>
         {messages.length === 0 && (
           <div style={{textAlign:"center",color:C.muted,fontSize:13,marginTop:40}}>
-            Say hello to {therapistName} 👋
+            Say hello to {partnerName} 👋
           </div>
         )}
         {messages.map(msg => {
@@ -475,7 +489,7 @@ function DirectChat({ connection, currentUser, onBack }) {
             <div key={msg.id} style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start",gap:8}}>
               {!isMe && (
                 <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0,marginTop:2}}>
-                  {therapistPhoto ? <img src={therapistPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}}/> : "🧑‍⚕️"}
+                  {partnerPhoto ? <img src={partnerPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}}/> : (isTherapist ? "👤" : "🧑‍⚕️")}
                 </div>
               )}
               <div style={{maxWidth:"75%"}}>
@@ -495,7 +509,7 @@ function DirectChat({ connection, currentUser, onBack }) {
       {/* Input */}
       <div style={{padding:"10px 14px 18px",borderTop:`1px solid ${C.border}`,display:"flex",gap:9,alignItems:"flex-end",background:C.bg,flexShrink:0}}>
         <div style={{flex:1,position:"relative"}}>
-          {!input && <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",color:"#334155",fontSize:14,pointerEvents:"none"}}>Message {therapistName}…</span>}
+          {!input && <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",color:"#334155",fontSize:14,pointerEvents:"none"}}>Message {partnerName}…</span>}
           <textarea value={input}
             onChange={e => { setInput(e.target.value); e.currentTarget.style.height="auto"; e.currentTarget.style.height=Math.min(e.currentTarget.scrollHeight,100)+"px"; }}
             onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } }}
