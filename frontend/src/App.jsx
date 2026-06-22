@@ -210,6 +210,23 @@ function RegisterScreen({ onLogin, onGoLogin }) {
   );
 }
 
+// ── Notification sound ────────────────────────────────────────────────────────
+function playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [[880, 0, 0.12], [1100, 0.13, 0.18]].forEach(([freq, start, end]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.25, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + end);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + end);
+    });
+  } catch { /* browser blocked audio */ }
+}
+
 // ── AI Chat Module ─────────────────────────────────────────────────────────────
 function ChatModule({ mod, user, onBack }) {
   const [messages, setMessages] = useState([{id:"intro",role:"assistant",content:INTROS[mod.id]||"How are you feeling?",created_at:new Date().toISOString()}]);
@@ -219,6 +236,8 @@ function ChatModule({ mod, user, onBack }) {
   const [crisisVisible, setCrisisVisible] = useState(false);
   const [handoff, setHandoff] = useState(null);
   const [handoffDismissed, setHandoffDismissed] = useState(false);
+  const [inAppChat, setInAppChat] = useState(null);
+  const [therapistModal, setTherapistModal] = useState(null); // {accepted?, available}
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sessionIdRef = useRef(null);
@@ -294,6 +313,20 @@ function ChatModule({ mod, user, onBack }) {
     onBack();
   }
 
+  async function handleTalkToTherapist() {
+    setTherapistModal({ loading: true });
+    const [conns, available] = await Promise.all([
+      therapistAPI.listConnections(),
+      therapistAPI.getAvailable(mod.id),
+    ]);
+    const accepted = (Array.isArray(conns) ? conns : []).find(c => c.status === 'accepted');
+    setTherapistModal({ accepted: accepted || null, available });
+  }
+
+  if (inAppChat) {
+    return <DirectChat connection={inAppChat} currentUser={user} onBack={() => setInAppChat(null)}/>;
+  }
+
   const chips = CHIPS[mod.id] || [];
 
   return (
@@ -346,11 +379,7 @@ function ChatModule({ mod, user, onBack }) {
         ) : (
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={() => setShowChips(true)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer"}}>+ Suggestions</button>
-            <button onClick={async () => {
-              const result = await therapistAPI.getAvailable(mod.id);
-              if (result.available) { setHandoff(result); setHandoffDismissed(false); }
-              else alert("No therapists available right now. Please try again later.");
-            }} style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:50,padding:"5px 12px",color:"#A78BFA",fontSize:11,cursor:"pointer",fontWeight:600}}>🧑‍⚕️ Talk to therapist</button>
+            <button onClick={handleTalkToTherapist} style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:50,padding:"5px 12px",color:"#A78BFA",fontSize:11,cursor:"pointer",fontWeight:600}}>🧑‍⚕️ Talk to therapist</button>
           </div>
         )}
       </div>
@@ -400,6 +429,68 @@ function ChatModule({ mod, user, onBack }) {
         <button onClick={() => sendMsg(input)} disabled={streaming || !input.trim()} aria-label="Send"
           style={{width:44,height:44,borderRadius:"50%",border:"none",flexShrink:0,fontSize:17,display:"flex",alignItems:"center",justifyContent:"center",cursor:streaming||!input.trim()?"default":"pointer",background:streaming||!input.trim()?"rgba(255,255,255,0.05)":`linear-gradient(135deg,${mod.color},${C.violetDim})`,color:streaming||!input.trim()?"#334155":"#fff",boxShadow:streaming||!input.trim()?"none":`0 0 18px ${mod.color}55`}}>↑</button>
       </div>
+
+      {/* ── Therapist modal ── */}
+      {therapistModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={() => setTherapistModal(null)}>
+          <div onClick={e => e.stopPropagation()} style={{background:"#13102A",borderRadius:"24px 24px 0 0",padding:"24px 20px 32px",width:"100%",maxWidth:480,animation:"slideUp .25s ease"}}>
+            <div style={{width:40,height:4,background:"rgba(255,255,255,0.15)",borderRadius:2,margin:"0 auto 20px"}}/>
+            <h3 style={{color:C.text,fontSize:17,fontWeight:800,marginBottom:6,fontFamily:"Georgia,serif"}}>Talk to a therapist</h3>
+            <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Choose how you'd like to connect</p>
+
+            {therapistModal.loading ? (
+              <div style={{display:"flex",justifyContent:"center",padding:"20px 0"}}><Spinner/></div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {/* In-app chat if already connected */}
+                {therapistModal.accepted && (
+                  <button onClick={() => { setTherapistModal(null); setInAppChat(therapistModal.accepted); }}
+                    style={{background:"linear-gradient(135deg,rgba(124,58,237,0.2),rgba(45,212,191,0.1))",border:"1px solid rgba(124,58,237,0.4)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
+                    <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,overflow:"hidden",flexShrink:0}}>
+                      {therapistModal.accepted.therapist?.photo_url ? <img src={therapistModal.accepted.therapist.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Chat with {therapistModal.accepted.therapist?.full_name || "your therapist"}</div>
+                      <div style={{color:C.aqua,fontSize:11,marginTop:2}}>💬 In-app · Private & secure</div>
+                    </div>
+                    <span style={{color:C.aqua,fontSize:18}}>›</span>
+                  </button>
+                )}
+
+                {/* WhatsApp if therapist available */}
+                {therapistModal.available?.available && (
+                  <a href={therapistModal.available.whatsapp_link} target="_blank" rel="noopener noreferrer"
+                    style={{background:`rgba(37,211,102,0.1)`,border:"1px solid rgba(37,211,102,0.3)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textDecoration:"none"}}>
+                    <div style={{width:40,height:40,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>💬</div>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Connect via WhatsApp</div>
+                      <div style={{color:"#4ADE80",fontSize:11,marginTop:2}}>{therapistModal.available.therapist?.full_name || "Therapist"} · Available now</div>
+                    </div>
+                    <span style={{color:"#4ADE80",fontSize:18}}>›</span>
+                  </a>
+                )}
+
+                {/* Request connection if not yet connected */}
+                {!therapistModal.accepted && (
+                  <button onClick={() => { setTherapistModal(null); onBack(); }}
+                    style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
+                    <div style={{width:40,height:40,borderRadius:"50%",background:"rgba(124,58,237,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔍</div>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Find & connect with a therapist</div>
+                      <div style={{color:C.muted,fontSize:11,marginTop:2}}>Browse licensed professionals</div>
+                    </div>
+                    <span style={{color:C.muted,fontSize:18}}>›</span>
+                  </button>
+                )}
+
+                {!therapistModal.accepted && !therapistModal.available?.available && (
+                  <p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"8px 0"}}>No therapists available right now — try again later or connect in-app.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -409,8 +500,10 @@ function DirectChat({ connection, currentUser, onBack }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [notif, setNotif] = useState(null); // {text, from}
   const bottomRef = useRef(null);
   const pollRef = useRef(null);
+  const msgCountRef = useRef(0);
 
   const isTherapist = currentUser?.role === 'therapist' || currentUser?.role === 'admin';
   const therapistName = connection.therapist?.full_name || "Therapist";
@@ -434,7 +527,19 @@ function DirectChat({ connection, currentUser, onBack }) {
 
   const fetchMessages = useCallback(async () => {
     const data = await therapistAPI.getDirectMessages(connection.id);
-    if (Array.isArray(data)) setMessages(data);
+    if (!Array.isArray(data)) return;
+    const prev = msgCountRef.current;
+    if (prev > 0 && data.length > prev) {
+      // New message(s) arrived from the other person
+      const newest = data[data.length - 1];
+      if (!newest.is_mine) {
+        playNotifSound();
+        setNotif({ text: newest.content, from: newest.sender_name });
+        setTimeout(() => setNotif(null), 4000);
+      }
+    }
+    msgCountRef.current = data.length;
+    setMessages(data);
   }, [connection.id]);
 
   useEffect(() => {
@@ -456,7 +561,7 @@ function DirectChat({ connection, currentUser, onBack }) {
   }
 
   return (
-    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:C.bg,fontFamily:"system-ui,sans-serif"}}>
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:C.bg,fontFamily:"system-ui,sans-serif",position:"relative"}}>
       <style>{CSS}</style>
       {/* Header */}
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
@@ -475,6 +580,17 @@ function DirectChat({ connection, currentUser, onBack }) {
           </a>
         )}
       </div>
+
+      {/* Notification toast */}
+      {notif && (
+        <div style={{position:"absolute",top:70,left:"50%",transform:"translateX(-50%)",zIndex:50,background:"linear-gradient(135deg,#7C3AED,#4F46E5)",borderRadius:12,padding:"10px 16px",display:"flex",gap:8,alignItems:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.4)",animation:"fadeUp .3s ease",maxWidth:"90%",pointerEvents:"none"}}>
+          <span style={{fontSize:14}}>💬</span>
+          <div>
+            <div style={{color:"#fff",fontSize:12,fontWeight:700}}>{notif.from}</div>
+            <div style={{color:"rgba(255,255,255,0.8)",fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}}>{notif.text}</div>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div style={{flex:1,overflowY:"auto",padding:"16px 14px",display:"flex",flexDirection:"column",gap:10}}>
