@@ -384,13 +384,13 @@ class DirectMessageListCreateView(APIView):
         if err:
             return Response({'error': err}, status=404 if err == 'Not found.' else 403)
         msgs = conn.messages.select_related('sender').all()
-        return Response(DirectMessageSerializer(msgs, many=True).data)
+        return Response(DirectMessageSerializer(msgs, many=True, context={'request': request}).data)
 
     def post(self, request, pk):
         conn, err = self._get_connection(pk, request.user)
         if err:
             return Response({'error': err}, status=404 if err == 'Not found.' else 403)
-        serializer = DirectMessageSerializer(data=request.data)
+        serializer = DirectMessageSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        serializer.save(connection=conn, sender=request.user)
-        return Response(serializer.data, status=201)
+        msg = serializer.save(connection=conn, sender=request.user)
+        return Response(DirectMessageSerializer(msg, context={'request': request}).data, status=201)

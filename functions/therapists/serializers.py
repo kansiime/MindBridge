@@ -53,10 +53,11 @@ class PatientAssignmentSerializer(serializers.ModelSerializer):
 class DirectMessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
     sender_role = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
 
     class Meta:
         model = DirectMessage
-        fields = ['id', 'sender', 'sender_name', 'sender_role', 'content', 'created_at']
+        fields = ['id', 'sender', 'sender_name', 'sender_role', 'is_mine', 'content', 'created_at']
         read_only_fields = ['id', 'sender', 'created_at']
 
     def get_sender_name(self, obj):
@@ -64,6 +65,10 @@ class DirectMessageSerializer(serializers.ModelSerializer):
 
     def get_sender_role(self, obj):
         return obj.sender.role
+
+    def get_is_mine(self, obj):
+        request = self.context.get('request')
+        return bool(request and obj.sender_id == request.user.id)
 
 
 class ConnectionRequestSerializer(serializers.ModelSerializer):

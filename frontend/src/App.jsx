@@ -470,7 +470,7 @@ function DirectChat({ connection, currentUser, onBack }) {
           </div>
         )}
         {messages.map(msg => {
-          const isMe = msg.sender === currentUser?.id || msg.sender_role === currentUser?.role;
+          const isMe = msg.is_mine ?? (msg.sender === currentUser?.id);
           return (
             <div key={msg.id} style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start",gap:8}}>
               {!isMe && (
@@ -549,7 +549,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
   }
 
   if (activeConnection) {
-    return <DirectChat connection={activeConnection} currentUser={user} onBack={() => setActiveConnection(null)}/>;
+    return <DirectChat connection={activeConnection} currentUser={user} onBack={() => { setActiveConnection(null); setTab("messages"); }}/>;
   }
 
   const tabs = [
