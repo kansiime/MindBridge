@@ -275,6 +275,39 @@ class AdminApplicationReviewView(APIView):
         return Response(response_data)
 
 
+# ── Therapist Profile Update ──────────────────────────────────────────────────
+
+class TherapistProfileUpdateView(APIView):
+    """PATCH /api/v1/therapists/profile/ — therapist updates their own profile"""
+
+    permission_classes = [IsTherapistOrAdmin]
+
+    EDITABLE_FIELDS = [
+        'bio', 'credentials', 'years_experience', 'specializations',
+        'whatsapp_number', 'phone_number', 'photo_url', 'working_hours',
+        'timezone', 'max_patients', 'is_available',
+    ]
+
+    def get(self, request):
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response({'error': 'No therapist profile found.'}, status=404)
+        return Response(TherapistProfileSerializer(profile).data)
+
+    def patch(self, request):
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response({'error': 'No therapist profile found.'}, status=404)
+
+        for field in self.EDITABLE_FIELDS:
+            if field in request.data:
+                setattr(profile, field, request.data[field])
+        profile.save()
+        return Response(TherapistProfileSerializer(profile).data)
+
+
 # ── Connection Requests ───────────────────────────────────────────────────────
 
 class ConnectionRequestListCreateView(APIView):

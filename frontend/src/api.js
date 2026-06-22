@@ -212,6 +212,20 @@ export const therapistAPI = {
     return res.json()
   },
 
+  async getProfile() {
+    const res = await authFetch('/therapists/profile/')
+    if (!res || !res.ok) return null
+    return res.json()
+  },
+
+  async updateProfile(data) {
+    const res = await authFetch('/therapists/profile/', {
+      method: 'PATCH',
+      body:   JSON.stringify(data),
+    })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
   async listConnections() {
     const res = await authFetch('/therapists/connections/')
     if (!res || !res.ok) return []

@@ -10,6 +10,9 @@ urlpatterns = [
     path('portal/', views.TherapistPortalView.as_view(), name='therapist_portal'),
     path('<uuid:pk>/', views.TherapistDetailView.as_view(), name='therapist_detail'),
 
+    # Therapist self-service profile
+    path('profile/', views.TherapistProfileUpdateView.as_view(), name='therapist_profile_update'),
+
     # Connection requests & direct messaging
     path('connections/', views.ConnectionRequestListCreateView.as_view(), name='connections'),
     path('connections/<uuid:pk>/respond/', views.ConnectionRequestRespondView.as_view(), name='connection_respond'),
