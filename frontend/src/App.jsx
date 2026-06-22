@@ -723,14 +723,19 @@ function TherapistDashboard({ user, onLogout }) {
   const [connections, setConnections] = useState([]);
   const [activeConnection, setActiveConnection] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState(null);
+  const [profileForm, setProfileForm] = useState(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState("");
 
   const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [p, conns] = await Promise.all([therapistAPI.portal(), therapistAPI.listConnections()]);
+    const [p, conns, prof] = await Promise.all([therapistAPI.portal(), therapistAPI.listConnections(), therapistAPI.getProfile()]);
     setPortal(p);
     setConnections(Array.isArray(conns) ? conns : []);
+    if (prof) { setProfile(prof); setProfileForm(prof); }
     setLoading(false);
   }, []);
 
@@ -748,10 +753,33 @@ function TherapistDashboard({ user, onLogout }) {
   const pending = connections.filter(c => c.status === "pending");
   const accepted = connections.filter(c => c.status === "accepted");
 
+  async function saveProfile() {
+    if (!profileForm) return;
+    setProfileSaving(true); setProfileMsg("");
+    const result = await therapistAPI.updateProfile({
+      bio: profileForm.bio,
+      credentials: profileForm.credentials,
+      years_experience: profileForm.years_experience,
+      specializations: profileForm.specializations,
+      whatsapp_number: profileForm.whatsapp_number,
+      phone_number: profileForm.phone_number,
+      photo_url: profileForm.photo_url,
+      working_hours: profileForm.working_hours,
+      timezone: profileForm.timezone,
+      max_patients: profileForm.max_patients,
+      is_available: profileForm.is_available,
+    });
+    if (result.ok) { setProfile(result.data); setProfileMsg("Saved!"); }
+    else setProfileMsg("Save failed. Please try again.");
+    setProfileSaving(false);
+    setTimeout(() => setProfileMsg(""), 3000);
+  }
+
   const tabs = [
     {id:"patients", label:"Patients"},
     {id:"requests", label:`Requests${pending.length ? ` (${pending.length})` : ""}`},
     {id:"messages", label:"Messages"},
+    {id:"profile", label:"My Profile"},
   ];
 
   return (
@@ -886,6 +914,114 @@ function TherapistDashboard({ user, onLogout }) {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {!loading && tab === "profile" && profileForm && (
+        <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+          <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>My Profile</h2>
+          <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Update your information and availability</p>
+
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+            {/* Availability toggle */}
+            <div className="glass" style={{borderRadius:14,padding:14,display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{color:C.text,fontWeight:700,fontSize:14}}>Available for new patients</div>
+                <div style={{color:C.muted,fontSize:12,marginTop:2}}>Toggle off to pause incoming requests</div>
+              </div>
+              <button onClick={() => setProfileForm(f => ({...f, is_available: !f.is_available}))}
+                style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:profileForm.is_available?C.aqua:"rgba(255,255,255,0.1)",position:"relative",flexShrink:0,transition:"background 0.2s"}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:profileForm.is_available?23:3,transition:"left 0.2s"}}/>
+              </button>
+            </div>
+
+            {/* Bio */}
+            <div>
+              <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>BIO</label>
+              <textarea value={profileForm.bio||""} onChange={e => setProfileForm(f=>({...f,bio:e.target.value}))} rows={3}
+                style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"vertical",fontFamily:"system-ui,sans-serif"}}/>
+            </div>
+
+            {/* Credentials */}
+            <div>
+              <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>CREDENTIALS</label>
+              <textarea value={profileForm.credentials||""} onChange={e => setProfileForm(f=>({...f,credentials:e.target.value}))} rows={2}
+                style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"vertical",fontFamily:"system-ui,sans-serif"}}/>
+            </div>
+
+            {/* Two columns */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>YEARS EXPERIENCE</label>
+                <input type="number" min={0} value={profileForm.years_experience||0} onChange={e => setProfileForm(f=>({...f,years_experience:parseInt(e.target.value)||0}))}
+                  style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>MAX PATIENTS</label>
+                <input type="number" min={1} value={profileForm.max_patients||10} onChange={e => setProfileForm(f=>({...f,max_patients:parseInt(e.target.value)||10}))}
+                  style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+              </div>
+            </div>
+
+            {/* Contact */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div>
+                <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>WHATSAPP NUMBER</label>
+                <input type="text" value={profileForm.whatsapp_number||""} onChange={e => setProfileForm(f=>({...f,whatsapp_number:e.target.value}))}
+                  style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>PHONE NUMBER</label>
+                <input type="text" value={profileForm.phone_number||""} onChange={e => setProfileForm(f=>({...f,phone_number:e.target.value}))}
+                  style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+              </div>
+            </div>
+
+            {/* Photo URL */}
+            <div>
+              <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>PHOTO URL</label>
+              <input type="url" value={profileForm.photo_url||""} onChange={e => setProfileForm(f=>({...f,photo_url:e.target.value}))}
+                style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+            </div>
+
+            {/* Working Hours */}
+            <div>
+              <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:8,letterSpacing:"0.05em"}}>WORKING HOURS</label>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {["mon","tue","wed","thu","fri","sat","sun"].map(day => {
+                  const hours = profileForm.working_hours?.[day];
+                  return (
+                    <div key={day} style={{display:"grid",gridTemplateColumns:"60px 1fr 1fr 40px",gap:8,alignItems:"center"}}>
+                      <span style={{color:C.subtle,fontSize:12,fontWeight:600,textTransform:"uppercase"}}>{day}</span>
+                      <input type="time" value={hours?.start||""} disabled={!hours}
+                        onChange={e => setProfileForm(f=>({...f,working_hours:{...f.working_hours,[day]:{...f.working_hours[day],start:e.target.value}}}))}
+                        style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 8px",fontSize:12,color:hours?C.text:C.muted,outline:"none",width:"100%",opacity:hours?1:0.4}}/>
+                      <input type="time" value={hours?.end||""} disabled={!hours}
+                        onChange={e => setProfileForm(f=>({...f,working_hours:{...f.working_hours,[day]:{...f.working_hours[day],end:e.target.value}}}))}
+                        style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 8px",fontSize:12,color:hours?C.text:C.muted,outline:"none",width:"100%",opacity:hours?1:0.4}}/>
+                      <button onClick={() => setProfileForm(f => {
+                        const wh = {...f.working_hours};
+                        if (wh[day]) { delete wh[day]; } else { wh[day] = {start:"09:00",end:"17:00"}; }
+                        return {...f, working_hours:wh};
+                      })} style={{background:hours?"rgba(239,68,68,0.1)":"rgba(45,212,191,0.1)",border:`1px solid ${hours?"rgba(239,68,68,0.2)":"rgba(45,212,191,0.2)"}`,borderRadius:8,padding:"5px",fontSize:12,color:hours?"#F87171":C.aqua,cursor:"pointer",textAlign:"center"}}>
+                        {hours ? "✕" : "+"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{color:C.muted,fontSize:11,marginTop:6}}>Click + to add a day, ✕ to remove it</p>
+            </div>
+
+            {/* Save */}
+            <div style={{display:"flex",alignItems:"center",gap:12,paddingTop:4}}>
+              <button className="btn-primary" onClick={saveProfile} disabled={profileSaving} style={{padding:"10px 24px"}}>
+                {profileSaving ? "Saving…" : "Save changes"}
+              </button>
+              {profileMsg && <span style={{color:profileMsg==="Saved!"?C.aqua:"#F87171",fontSize:13,fontWeight:600}}>{profileMsg}</span>}
+            </div>
+          </div>
         </div>
       )}
     </div>
