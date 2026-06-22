@@ -315,12 +315,16 @@ function ChatModule({ mod, user, onBack }) {
 
   async function handleTalkToTherapist() {
     setTherapistModal({ loading: true });
-    const [conns, available] = await Promise.all([
-      therapistAPI.listConnections(),
-      therapistAPI.getAvailable(mod.id),
-    ]);
-    const accepted = (Array.isArray(conns) ? conns : []).find(c => c.status === 'accepted');
-    setTherapistModal({ accepted: accepted || null, available });
+    try {
+      const [conns, available] = await Promise.all([
+        therapistAPI.listConnections(),
+        therapistAPI.getAvailable(mod.id),
+      ]);
+      const accepted = (Array.isArray(conns) ? conns : []).find(c => c.status === 'accepted');
+      setTherapistModal({ loading: false, accepted: accepted || null, available: available || { available: false } });
+    } catch {
+      setTherapistModal({ loading: false, accepted: null, available: { available: false } });
+    }
   }
 
   if (inAppChat) {
