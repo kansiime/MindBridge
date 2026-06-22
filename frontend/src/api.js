@@ -211,4 +211,40 @@ export const therapistAPI = {
     if (!res || !res.ok) return null
     return res.json()
   },
+
+  async listConnections() {
+    const res = await authFetch('/therapists/connections/')
+    if (!res || !res.ok) return []
+    return res.json()
+  },
+
+  async requestConnection(therapistId, message = '') {
+    const res = await authFetch('/therapists/connections/', {
+      method: 'POST',
+      body:   JSON.stringify({ therapist_id: therapistId, message }),
+    })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async respondConnection(connectionId, action) {
+    const res = await authFetch(`/therapists/connections/${connectionId}/respond/`, {
+      method: 'PATCH',
+      body:   JSON.stringify({ action }),
+    })
+    return res?.ok ? res.json() : null
+  },
+
+  async getDirectMessages(connectionId) {
+    const res = await authFetch(`/therapists/connections/${connectionId}/messages/`)
+    if (!res || !res.ok) return []
+    return res.json()
+  },
+
+  async sendDirectMessage(connectionId, content) {
+    const res = await authFetch(`/therapists/connections/${connectionId}/messages/`, {
+      method: 'POST',
+      body:   JSON.stringify({ content }),
+    })
+    return res?.ok ? res.json() : null
+  },
 }

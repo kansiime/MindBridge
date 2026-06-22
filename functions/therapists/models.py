@@ -147,3 +147,43 @@ class HandoffEvent(models.Model):
     class Meta:
         db_table = 'handoff_events'
         ordering = ['-created_at']
+
+
+class ConnectionRequest(models.Model):
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        ACCEPTED = 'accepted', 'Accepted'
+        DECLINED = 'declined', 'Declined'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='connection_requests_sent')
+    therapist = models.ForeignKey(TherapistProfile, on_delete=models.CASCADE, related_name='connection_requests')
+    message = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'connection_requests'
+        ordering = ['-created_at']
+        unique_together = [['patient', 'therapist']]
+
+    def __str__(self):
+        return f'{self.patient.email} → {self.therapist.full_name} ({self.status})'
+
+
+class DirectMessage(models.Model):
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    connection = models.ForeignKey(ConnectionRequest, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='direct_messages_sent')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'direct_messages'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.sender.email}: {self.content[:40]}'
