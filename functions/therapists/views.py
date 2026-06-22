@@ -229,11 +229,13 @@ class AdminApplicationReviewView(APIView):
                 },
             )
             if created:
-                # Set a temporary password — therapist must reset on first login
+                # Set a temporary password — shown to admin to share manually
                 temp_password = secrets.token_urlsafe(12)
                 user.set_password(temp_password)
                 user.role = 'therapist'
                 user.save()
+            else:
+                temp_password = None
 
             TherapistProfile.objects.get_or_create(
                 user=user,
@@ -258,4 +260,15 @@ class AdminApplicationReviewView(APIView):
                 },
             )
 
-        return Response({'status': app.status, 'notes': notes})
+        response_data = {'status': app.status, 'notes': notes}
+        if action == 'approve':
+            response_data['therapist_email'] = app.email
+            response_data['therapist_name'] = app.full_name
+            response_data['whatsapp'] = app.whatsapp_number
+            if 'temp_password' in dir() or 'temp_password' in locals():
+                pass
+            response_data['message'] = (
+                f'Account created for {app.full_name}. '
+                f'Share credentials via WhatsApp: {app.whatsapp_number}'
+            )
+        return Response(response_data)
