@@ -18,6 +18,15 @@ urlpatterns = [
     path('connections/<uuid:pk>/respond/', views.ConnectionRequestRespondView.as_view(), name='connection_respond'),
     path('connections/<uuid:pk>/messages/', views.DirectMessageListCreateView.as_view(), name='direct_messages'),
 
+    # Clinical notes, risk, outcomes, appointments
+    path('notes/', views.ClinicalNoteListCreateView.as_view(), name='clinical_notes'),
+    path('notes/<uuid:pk>/', views.ClinicalNoteDetailView.as_view(), name='clinical_note_detail'),
+    path('risk-flags/', views.TherapistRiskFlagsView.as_view(), name='risk_flags'),
+    path('risk-flags/<uuid:pk>/resolve/', views.TherapistRiskFlagsView.as_view(), name='risk_flag_resolve'),
+    path('outcomes/<uuid:patient_id>/', views.PatientOutcomesView.as_view(), name='patient_outcomes'),
+    path('appointments/', views.AppointmentListCreateView.as_view(), name='appointments'),
+    path('appointments/<uuid:pk>/', views.AppointmentUpdateView.as_view(), name='appointment_update'),
+
     # Admin
     path('admin/applications/', views.AdminApplicationListView.as_view(), name='admin_applications'),
     path('admin/applications/<uuid:pk>/review/', views.AdminApplicationReviewView.as_view(), name='admin_review'),

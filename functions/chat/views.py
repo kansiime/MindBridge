@@ -172,3 +172,60 @@ class CrisisFlagResolveView(APIView):
         flag.resolved_at = timezone.now()
         flag.save()
         return Response(CrisisFlagSerializer(flag).data)
+
+
+from .models import SafetyPlan, PHQAssessment
+from .serializers import SafetyPlanSerializer, PHQAssessmentSerializer
+
+
+class SafetyPlanView(APIView):
+    """GET/PUT /api/v1/chat/safety-plan/"""
+
+    def get(self, request):
+        try:
+            plan = request.user.safety_plan
+        except SafetyPlan.DoesNotExist:
+            return Response({})
+        return Response(SafetyPlanSerializer(plan).data)
+
+    def put(self, request):
+        try:
+            plan = request.user.safety_plan
+            serializer = SafetyPlanSerializer(plan, data=request.data, partial=True)
+        except SafetyPlan.DoesNotExist:
+            serializer = SafetyPlanSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data)
+
+
+class PHQAssessmentListCreateView(generics.ListCreateAPIView):
+    """GET/POST /api/v1/chat/assessments/"""
+
+    serializer_class = PHQAssessmentSerializer
+
+    def get_queryset(self):
+        return PHQAssessment.objects.filter(user=self.request.user)
+
+
+class UserOutcomesView(APIView):
+    """GET /api/v1/chat/outcomes/ — aggregated mood + session data for charts"""
+
+    def get(self, request):
+        from django.db.models.functions import TruncDate
+        moods = (
+            MoodEntry.objects
+            .filter(user=request.user)
+            .order_by('-created_at')[:30]
+            .values('mood', 'score', 'created_at')
+        )
+        sessions = (
+            ChatSession.objects
+            .filter(user=request.user)
+            .order_by('-created_at')[:20]
+            .values('id', 'module_id', 'summary', 'mood_score', 'crisis_flag', 'created_at', 'ended_at')
+        )
+        return Response({
+            'moods': list(moods),
+            'sessions': list(sessions),
+        })

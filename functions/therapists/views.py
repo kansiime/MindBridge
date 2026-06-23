@@ -394,3 +394,171 @@ class DirectMessageListCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         msg = serializer.save(connection=conn, sender=request.user)
         return Response(DirectMessageSerializer(msg, context={'request': request}).data, status=201)
+
+
+# ── Clinical Notes ────────────────────────────────────────────────────────────
+
+from .serializers import ClinicalNoteSerializer, AppointmentSerializer
+from .models import ClinicalNote, Appointment
+
+
+class ClinicalNoteListCreateView(APIView):
+    """GET/POST /api/v1/therapists/notes/?patient=<uuid>"""
+
+    permission_classes = [IsTherapistOrAdmin]
+
+    def get(self, request):
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response([])
+        qs = ClinicalNote.objects.filter(therapist=profile).select_related('patient')
+        patient_id = request.query_params.get('patient')
+        if patient_id:
+            qs = qs.filter(patient_id=patient_id)
+        return Response(ClinicalNoteSerializer(qs, many=True).data)
+
+    def post(self, request):
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response({'error': 'No therapist profile.'}, status=404)
+        serializer = ClinicalNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(therapist=profile)
+        return Response(serializer.data, status=201)
+
+
+class ClinicalNoteDetailView(APIView):
+    """PATCH /api/v1/therapists/notes/<pk>/"""
+
+    permission_classes = [IsTherapistOrAdmin]
+
+    def patch(self, request, pk):
+        try:
+            note = ClinicalNote.objects.get(id=pk, therapist=request.user.therapist_profile)
+        except (ClinicalNote.DoesNotExist, TherapistProfile.DoesNotExist):
+            return Response({'error': 'Not found.'}, status=404)
+        serializer = ClinicalNoteSerializer(note, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+# ── Risk Dashboard ─────────────────────────────────────────────────────────────
+
+class TherapistRiskFlagsView(APIView):
+    """GET /api/v1/therapists/risk-flags/ — crisis flags for therapist's patients"""
+
+    permission_classes = [IsTherapistOrAdmin]
+
+    def get(self, request):
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response([])
+        patient_ids = PatientAssignment.objects.filter(
+            therapist=profile, status='active',
+        ).values_list('patient_id', flat=True)
+        from chat.models import CrisisFlag, ChatSession
+        flags = (
+            CrisisFlag.objects
+            .filter(user_id__in=patient_ids, resolved=False)
+            .select_related('user', 'session')
+            .order_by('-created_at')
+        )
+        data = []
+        for f in flags:
+            data.append({
+                'id': str(f.id),
+                'patient_id': str(f.user_id),
+                'patient_name': f.user.name or f.user.email,
+                'patient_email': f.user.email,
+                'severity': f.severity,
+                'trigger_text': f.trigger_text,
+                'module': f.session.module_id if f.session else None,
+                'created_at': f.created_at,
+            })
+        return Response(data)
+
+    def patch(self, request, pk):
+        """Resolve a flag: PATCH /api/v1/therapists/risk-flags/<pk>/resolve/"""
+        from chat.models import CrisisFlag
+        try:
+            flag = CrisisFlag.objects.get(id=pk)
+        except CrisisFlag.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=404)
+        from django.utils import timezone as tz
+        flag.resolved = True
+        flag.resolved_by = request.user
+        flag.resolved_at = tz.now()
+        flag.save()
+        return Response({'resolved': True})
+
+
+# ── Patient Outcomes ──────────────────────────────────────────────────────────
+
+class PatientOutcomesView(APIView):
+    """GET /api/v1/therapists/outcomes/<patient_id>/ — mood + session trends"""
+
+    permission_classes = [IsTherapistOrAdmin]
+
+    def get(self, request, patient_id):
+        from chat.models import MoodEntry, ChatSession
+        moods = list(
+            MoodEntry.objects
+            .filter(user_id=patient_id)
+            .order_by('-created_at')[:30]
+            .values('mood', 'score', 'created_at')
+        )
+        sessions = list(
+            ChatSession.objects
+            .filter(user_id=patient_id)
+            .order_by('-created_at')[:10]
+            .values('id', 'module_id', 'summary', 'mood_score', 'crisis_flag', 'created_at')
+        )
+        return Response({'moods': moods, 'sessions': sessions})
+
+
+# ── Appointments ──────────────────────────────────────────────────────────────
+
+class AppointmentListCreateView(APIView):
+    """GET/POST /api/v1/therapists/appointments/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role in ('therapist', 'admin'):
+            try:
+                profile = request.user.therapist_profile
+                qs = Appointment.objects.filter(therapist=profile).select_related('patient')
+            except TherapistProfile.DoesNotExist:
+                return Response([])
+        else:
+            qs = Appointment.objects.filter(patient=request.user).select_related('therapist__user')
+        return Response(AppointmentSerializer(qs, many=True).data)
+
+    def post(self, request):
+        serializer = AppointmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=201)
+
+
+class AppointmentUpdateView(APIView):
+    """PATCH /api/v1/therapists/appointments/<pk>/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            if request.user.role in ('therapist', 'admin'):
+                appt = Appointment.objects.get(id=pk, therapist=request.user.therapist_profile)
+            else:
+                appt = Appointment.objects.get(id=pk, patient=request.user)
+        except (Appointment.DoesNotExist, TherapistProfile.DoesNotExist):
+            return Response({'error': 'Not found.'}, status=404)
+        serializer = AppointmentSerializer(appt, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

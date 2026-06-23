@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import TherapistProfile, TherapistApplication, PatientAssignment, ConnectionRequest, DirectMessage
+from .models import TherapistProfile, TherapistApplication, PatientAssignment, ConnectionRequest, DirectMessage, ClinicalNote, Appointment
 
 
 class TherapistProfileSerializer(serializers.ModelSerializer):
@@ -96,3 +96,39 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
         therapist_id = validated_data.pop('therapist_id')
         therapist = TherapistProfile.objects.get(id=therapist_id)
         return ConnectionRequest.objects.create(therapist=therapist, **validated_data)
+
+
+class ClinicalNoteSerializer(serializers.ModelSerializer):
+    therapist_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClinicalNote
+        fields = [
+            'id', 'patient', 'therapist_name', 'session_date',
+            'subjective', 'objective', 'assessment', 'plan',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_therapist_name(self, obj):
+        return obj.therapist.full_name
+
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    therapist_name = serializers.SerializerMethodField()
+    patient_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Appointment
+        fields = [
+            'id', 'therapist', 'patient', 'therapist_name', 'patient_name',
+            'appointment_type', 'scheduled_at', 'duration_minutes', 'status',
+            'patient_notes', 'therapist_notes', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_therapist_name(self, obj):
+        return obj.therapist.full_name
+
+    def get_patient_name(self, obj):
+        return obj.patient.name or obj.patient.email

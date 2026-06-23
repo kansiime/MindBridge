@@ -118,3 +118,39 @@ class CrisisFlag(models.Model):
         db_table = 'crisis_flags'
         ordering = ['-created_at']
         indexes = [models.Index(fields=['resolved', '-created_at'])]
+
+
+class SafetyPlan(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='safety_plan')
+    warning_signs = models.JSONField(default=list)
+    coping_strategies = models.JSONField(default=list)
+    reasons_to_live = models.JSONField(default=list)
+    support_contacts = models.JSONField(default=list)
+    professional_contacts = models.JSONField(default=list)
+    crisis_number = models.CharField(max_length=50, default='+256787671827')
+    environment_safety = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'safety_plans'
+
+
+class PHQAssessment(models.Model):
+    class Type(models.TextChoices):
+        PHQ9 = 'phq9', 'PHQ-9 Depression'
+        GAD7 = 'gad7', 'GAD-7 Anxiety'
+        ONBOARDING = 'onboarding', 'Onboarding'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assessments')
+    type = models.CharField(max_length=20, choices=Type.choices)
+    responses = models.JSONField(default=dict)
+    total_score = models.PositiveSmallIntegerField(default=0)
+    severity = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'phq_assessments'
+        ordering = ['-created_at']
