@@ -314,6 +314,67 @@ export const therapistAPI = {
     const res = await authFetch(`/therapists/appointments/${id}/`, { method: 'PATCH', body: JSON.stringify(data) })
     return { ok: res?.ok, data: res?.ok ? await res.json() : null }
   },
+
+  async getTreatmentPlan(patientId) {
+    const res = await authFetch(`/therapists/treatment-plan/${patientId}/`)
+    if (!res || !res.ok) return null
+    return res.json()
+  },
+
+  async saveTreatmentPlan(patientId, data) {
+    const res = await authFetch(`/therapists/treatment-plan/${patientId}/`, { method: 'PUT', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async getTasks(patientId = null) {
+    const q = patientId ? `?patient=${patientId}` : ''
+    const res = await authFetch(`/therapists/tasks/${q}`)
+    if (!res || !res.ok) return []
+    return res.json()
+  },
+
+  async createTask(data) {
+    const res = await authFetch('/therapists/tasks/', { method: 'POST', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async completeTask(id) {
+    const res = await authFetch(`/therapists/tasks/${id}/complete/`, { method: 'PATCH' })
+    return res?.ok
+  },
+
+  async getDischargeNotes(patientId) {
+    const res = await authFetch(`/therapists/discharge/${patientId}/`)
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data) ? data : data.results || []
+  },
+
+  async createDischargeNote(patientId, data) {
+    const res = await authFetch(`/therapists/discharge/${patientId}/`, { method: 'POST', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async getMonthlyReport(year, month) {
+    const token = getAccess()
+    if (!token) return null
+    const res = await fetch(`${BASE_URL}/therapists/monthly-report/?year=${year}&month=${month}&format=json`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+    return res.json()
+  },
+
+  async markMessagesRead(connectionId) {
+    const res = await authFetch(`/therapists/connections/${connectionId}/messages/read/`, { method: 'PATCH' })
+    return res?.ok
+  },
+
+  async getWarmHandoff(patientId) {
+    const res = await authFetch(`/chat/handoff/${patientId}/`)
+    if (!res || !res.ok) return null
+    return res.json()
+  },
 }
 
 // ── Wellbeing / WHO features API ──────────────────────────────────────────────
@@ -370,6 +431,37 @@ export const wellbeingAPI = {
     if (!res || !res.ok) return []
     const data = await res.json()
     return data.results || data
+  },
+
+  async getGratitude() {
+    const res = await authFetch('/chat/gratitude/')
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
+
+  async addGratitude(items) {
+    const res = await authFetch('/chat/gratitude/', { method: 'POST', body: JSON.stringify({ items }) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async submitSessionFeedback(sessionId, rating, comment = '') {
+    const res = await authFetch(`/chat/sessions/${sessionId}/feedback/`, {
+      method: 'POST',
+      body: JSON.stringify({ session: sessionId, rating, comment }),
+    })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async getPatientTasks() {
+    const res = await authFetch('/therapists/tasks/')
+    if (!res || !res.ok) return []
+    return res.json()
+  },
+
+  async completePatientTask(id) {
+    const res = await authFetch(`/therapists/tasks/${id}/complete/`, { method: 'PATCH' })
+    return res?.ok
   },
 }
 
