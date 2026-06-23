@@ -372,3 +372,42 @@ export const wellbeingAPI = {
     return data.results || data
   },
 }
+
+// ── Account / GDPR API ───────────────────────────────────────────────────────
+export const accountAPI = {
+  async exportData() {
+    const token = getAccess()
+    if (!token) return null
+    const res = await fetch(`${BASE_URL}/auth/export/`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'mindbridge-export.json'
+    a.click()
+    URL.revokeObjectURL(url)
+    return true
+  },
+
+  async deleteAccount() {
+    const res = await authFetch('/auth/delete-account/', { method: 'DELETE' })
+    return res?.status === 204
+  },
+
+  async changePassword(oldPassword, newPassword) {
+    const res = await authFetch('/auth/change-password/', {
+      method: 'POST',
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword, new_password2: newPassword }),
+    })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async getAuditLog() {
+    const res = await authFetch('/therapists/audit-log/')
+    if (!res || !res.ok) return []
+    return res.json()
+  },
+}

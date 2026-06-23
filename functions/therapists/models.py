@@ -233,3 +233,33 @@ class Appointment(models.Model):
     class Meta:
         db_table = 'appointments'
         ordering = ['scheduled_at']
+
+
+class AuditLog(models.Model):
+    """Records therapist access to patient data."""
+    ACTION_CHOICES = [
+        ('view_patient', 'Viewed patient data'),
+        ('view_session', 'Viewed session'),
+        ('view_moods', 'Viewed mood data'),
+        ('create_note', 'Created clinical note'),
+        ('update_note', 'Updated clinical note'),
+        ('resolve_flag', 'Resolved risk flag'),
+        ('view_outcomes', 'Viewed patient outcomes'),
+    ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    therapist = models.ForeignKey(User, on_delete=models.CASCADE, related_name='audit_logs')
+    patient = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='access_logs')
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    detail = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'audit_logs'
+        ordering = ['-created_at']
+
+    @classmethod
+    def log(cls, therapist, action, patient=None, detail=''):
+        try:
+            cls.objects.create(therapist=therapist, action=action, patient=patient, detail=detail)
+        except Exception:
+            pass  # Never let logging break the main request
