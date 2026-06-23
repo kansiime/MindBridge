@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import TherapistProfile, TherapistApplication, PatientAssignment, ConnectionRequest, DirectMessage, ClinicalNote, Appointment
+from .models import TherapistProfile, TherapistApplication, PatientAssignment, ConnectionRequest, DirectMessage, ClinicalNote, Appointment, TreatmentPlan, TherapistTask, DischargeNote
 
 
 class TherapistProfileSerializer(serializers.ModelSerializer):
@@ -132,3 +132,34 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
     def get_patient_name(self, obj):
         return obj.patient.name or obj.patient.email
+
+
+class TreatmentPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TreatmentPlan
+        fields = ['id', 'patient', 'goals', 'interventions', 'strengths', 'review_date', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class TherapistTaskSerializer(serializers.ModelSerializer):
+    patient_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TherapistTask
+        fields = ['id', 'patient', 'patient_name', 'title', 'description', 'due_date', 'completed', 'completed_at', 'created_at']
+        read_only_fields = ['id', 'completed_at', 'created_at']
+
+    def get_patient_name(self, obj):
+        return obj.patient.name or obj.patient.email.split('@')[0]
+
+
+class DischargeNoteSerializer(serializers.ModelSerializer):
+    therapist_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DischargeNote
+        fields = ['id', 'patient', 'therapist_name', 'presenting_problem', 'treatment_provided', 'outcome', 'recommendations', 'discharge_date', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_therapist_name(self, obj):
+        return obj.therapist.full_name

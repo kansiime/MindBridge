@@ -154,3 +154,25 @@ class PHQAssessment(models.Model):
     class Meta:
         db_table = 'phq_assessments'
         ordering = ['-created_at']
+
+
+class GratitudeEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gratitude_entries')
+    items = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'gratitude_entries'
+        ordering = ['-created_at']
+
+
+class SessionFeedback(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.OneToOneField('ChatSession', on_delete=models.CASCADE, related_name='feedback')
+    rating = models.PositiveSmallIntegerField()
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'session_feedback'

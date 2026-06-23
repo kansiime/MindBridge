@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import ChatSession, Message, MoodEntry, CrisisFlag
+from .models import ChatSession, Message, MoodEntry, CrisisFlag, SafetyPlan, PHQAssessment, GratitudeEntry, SessionFeedback
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -91,3 +91,21 @@ class PHQAssessmentSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+
+
+class GratitudeEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GratitudeEntry
+        fields = ['id', 'items', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class SessionFeedbackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SessionFeedback
+        fields = ['id', 'session', 'rating', 'comment', 'created_at']
+        read_only_fields = ['id', 'created_at']

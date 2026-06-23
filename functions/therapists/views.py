@@ -588,3 +588,189 @@ class AuditLogView(APIView):
             for log in logs
         ]
         return Response(data)
+
+
+# ── Treatment Plan ────────────────────────────────────────────────────────────
+
+class TreatmentPlanView(APIView):
+    """GET/PUT /api/v1/therapists/treatment-plan/<patient_id>/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_therapist(self, user):
+        try:
+            return user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return None
+
+    def get(self, request, patient_id):
+        therapist = self._get_therapist(request.user)
+        if not therapist:
+            return Response({'error': 'Not a therapist'}, status=403)
+        from .models import TreatmentPlan
+        from .serializers import TreatmentPlanSerializer
+        try:
+            plan = TreatmentPlan.objects.get(therapist=therapist, patient_id=patient_id)
+            return Response(TreatmentPlanSerializer(plan).data)
+        except TreatmentPlan.DoesNotExist:
+            return Response(None)
+
+    def put(self, request, patient_id):
+        therapist = self._get_therapist(request.user)
+        if not therapist:
+            return Response({'error': 'Not a therapist'}, status=403)
+        from .models import TreatmentPlan
+        from .serializers import TreatmentPlanSerializer
+        plan, _ = TreatmentPlan.objects.get_or_create(therapist=therapist, patient_id=patient_id)
+        serializer = TreatmentPlanSerializer(plan, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+# ── Between-session Tasks ─────────────────────────────────────────────────────
+
+class TherapistTaskListCreateView(APIView):
+    """GET/POST /api/v1/therapists/tasks/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import TherapistTask
+        from .serializers import TherapistTaskSerializer
+        if request.user.role in ('therapist', 'admin'):
+            try:
+                profile = request.user.therapist_profile
+                tasks = TherapistTask.objects.filter(therapist=profile).select_related('patient')
+            except TherapistProfile.DoesNotExist:
+                return Response([])
+        else:
+            tasks = TherapistTask.objects.filter(patient=request.user).select_related('therapist__user')
+        return Response(TherapistTaskSerializer(tasks, many=True).data)
+
+    def post(self, request):
+        from .models import TherapistTask
+        from .serializers import TherapistTaskSerializer
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response({'error': 'Not a therapist'}, status=403)
+        serializer = TherapistTaskSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(therapist=profile)
+        return Response(serializer.data, status=201)
+
+
+class TherapistTaskCompleteView(APIView):
+    """PATCH /api/v1/therapists/tasks/<pk>/complete/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        from .models import TherapistTask
+        from django.utils import timezone as tz
+        try:
+            task = TherapistTask.objects.get(id=pk, patient=request.user)
+        except TherapistTask.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        task.completed = True
+        task.completed_at = tz.now()
+        task.save()
+        return Response({'completed': True})
+
+
+# ── Discharge Notes ───────────────────────────────────────────────────────────
+
+class DischargeNoteView(APIView):
+    """GET/POST /api/v1/therapists/discharge/<patient_id>/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, patient_id):
+        from .models import DischargeNote
+        from .serializers import DischargeNoteSerializer
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response({'error': 'Forbidden'}, status=403)
+        notes = DischargeNote.objects.filter(therapist=profile, patient_id=patient_id)
+        return Response(DischargeNoteSerializer(notes, many=True).data)
+
+    def post(self, request, patient_id):
+        from .models import DischargeNote
+        from .serializers import DischargeNoteSerializer
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response({'error': 'Forbidden'}, status=403)
+        serializer = DischargeNoteSerializer(data={**request.data, 'patient': str(patient_id)})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(therapist=profile)
+        return Response(serializer.data, status=201)
+
+
+# ── Monthly Report ────────────────────────────────────────────────────────────
+
+class MonthlyReportView(APIView):
+    """GET /api/v1/therapists/monthly-report/?year=2026&month=6"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from datetime import date
+        from django.db.models import Avg
+        from chat.models import PHQAssessment
+        try:
+            profile = request.user.therapist_profile
+        except TherapistProfile.DoesNotExist:
+            return Response({'error': 'Forbidden'}, status=403)
+
+        year = int(request.query_params.get('year', date.today().year))
+        month = int(request.query_params.get('month', date.today().month))
+
+        from .models import ClinicalNote, Appointment, TherapistTask
+        notes = ClinicalNote.objects.filter(therapist=profile, session_date__year=year, session_date__month=month)
+        appointments = Appointment.objects.filter(therapist=profile, scheduled_at__year=year, scheduled_at__month=month)
+        connections = ConnectionRequest.objects.filter(therapist=profile, status='accepted')
+        patient_ids = list(connections.values_list('patient_id', flat=True))
+
+        avg_phq = PHQAssessment.objects.filter(
+            user_id__in=patient_ids, type='phq9',
+            created_at__year=year, created_at__month=month
+        ).aggregate(avg=Avg('total_score'))
+
+        import json
+        from django.http import HttpResponse
+        report = {
+            'period': f'{year}-{month:02d}',
+            'therapist': profile.full_name,
+            'summary': {
+                'active_patients': connections.count(),
+                'notes_written': notes.count(),
+                'appointments_total': appointments.count(),
+                'appointments_completed': appointments.filter(status='completed').count(),
+                'avg_patient_phq9': float(avg_phq['avg']) if avg_phq['avg'] else None,
+            },
+            'notes': list(notes.values('session_date', 'patient__name', 'subjective', 'plan')),
+            'appointments': list(appointments.values('scheduled_at', 'patient__name', 'appointment_type', 'status')),
+        }
+        content = json.dumps(report, default=str, indent=2)
+        response = HttpResponse(content, content_type='application/json')
+        response['Content-Disposition'] = f'attachment; filename="mindbridge-report-{year}-{month:02d}.json"'
+        return response
+
+
+# ── Message Read Receipts ─────────────────────────────────────────────────────
+
+class MarkMessagesReadView(APIView):
+    """PATCH /api/v1/therapists/connections/<pk>/messages/read/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        from django.utils import timezone as tz
+        try:
+            conn = ConnectionRequest.objects.get(id=pk)
+        except ConnectionRequest.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        if conn.patient != request.user and (not hasattr(request.user, 'therapist_profile') or conn.therapist != request.user.therapist_profile):
+            return Response({'error': 'Forbidden'}, status=403)
+        # Mark all messages NOT sent by the current user as read
+        DirectMessage.objects.filter(
+            connection=conn, read_at__isnull=True
+        ).exclude(sender=request.user).update(read_at=tz.now())
+        return Response({'ok': True})

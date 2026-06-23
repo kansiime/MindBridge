@@ -179,6 +179,7 @@ class DirectMessage(models.Model):
     connection = models.ForeignKey(ConnectionRequest, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='direct_messages_sent')
     content = models.TextField()
+    read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -263,3 +264,52 @@ class AuditLog(models.Model):
             cls.objects.create(therapist=therapist, action=action, patient=patient, detail=detail)
         except Exception:
             pass  # Never let logging break the main request
+
+
+class TreatmentPlan(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    therapist = models.ForeignKey(TherapistProfile, on_delete=models.CASCADE, related_name='treatment_plans')
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='treatment_plans')
+    goals = models.JSONField(default=list)   # [{goal, target_date, status}]
+    interventions = models.JSONField(default=list)
+    strengths = models.TextField(blank=True)
+    review_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'treatment_plans'
+        unique_together = [['therapist', 'patient']]
+
+
+class TherapistTask(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    therapist = models.ForeignKey(TherapistProfile, on_delete=models.CASCADE, related_name='assigned_tasks')
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tasks')
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'therapist_tasks'
+        ordering = ['-created_at']
+
+
+class DischargeNote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    therapist = models.ForeignKey(TherapistProfile, on_delete=models.CASCADE, related_name='discharge_notes')
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='discharge_notes')
+    presenting_problem = models.TextField(blank=True)
+    treatment_provided = models.TextField(blank=True)
+    outcome = models.TextField(blank=True)
+    recommendations = models.TextField(blank=True)
+    discharge_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'discharge_notes'
+        ordering = ['-discharge_date']

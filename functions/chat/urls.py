@@ -15,5 +15,8 @@ urlpatterns = [
     path('crisis/<uuid:pk>/resolve/', views.CrisisFlagResolveView.as_view(), name='crisis_resolve'),
     path('safety-plan/', views.SafetyPlanView.as_view(), name='safety_plan'),
     path('assessments/', views.PHQAssessmentListCreateView.as_view(), name='assessments'),
-    path('outcomes/', views.UserOutcomesView.as_view(), name='outcomes'),
+    path('outcomes/', views.UserOutcomesDetailView.as_view(), name='outcomes'),
+    path('gratitude/', views.GratitudeEntryListCreateView.as_view(), name='gratitude'),
+    path('sessions/<uuid:session_id>/feedback/', views.SessionFeedbackView.as_view(), name='session_feedback'),
+    path('handoff/<uuid:patient_id>/', views.WarmHandoffView.as_view(), name='warm_handoff'),
 ]

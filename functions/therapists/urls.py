@@ -33,4 +33,14 @@ urlpatterns = [
 
     # Audit log
     path('audit-log/', views.AuditLogView.as_view(), name='audit_log'),
+
+    # Treatment plans, tasks, discharge notes, monthly report
+    path('treatment-plan/<uuid:patient_id>/', views.TreatmentPlanView.as_view(), name='treatment_plan'),
+    path('tasks/', views.TherapistTaskListCreateView.as_view(), name='tasks'),
+    path('tasks/<uuid:pk>/complete/', views.TherapistTaskCompleteView.as_view(), name='task_complete'),
+    path('discharge/<uuid:patient_id>/', views.DischargeNoteView.as_view(), name='discharge'),
+    path('monthly-report/', views.MonthlyReportView.as_view(), name='monthly_report'),
+
+    # Read receipts
+    path('connections/<uuid:pk>/messages/read/', views.MarkMessagesReadView.as_view(), name='messages_read'),
 ]

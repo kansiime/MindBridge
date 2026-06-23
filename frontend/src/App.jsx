@@ -221,11 +221,15 @@ function RegisterScreen({ onLogin, onGoLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [ageGate, setAgeGate] = useState(false);
+  const [tosAccepted, setTosAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!ageGate) { setError("You must confirm you are 18 or older"); return; }
+    if (!tosAccepted) { setError("Please accept the Terms of Service to continue"); return; }
     if (password !== password2) { setError("Passwords do not match"); return; }
     setLoading(true); setError("");
     const result = await authAPI.register(email, password, password2, name);
@@ -253,7 +257,15 @@ function RegisterScreen({ onLogin, onGoLogin }) {
             <Field label="EMAIL" type="email" value={email} onChange={setEmail} placeholder="you@example.com"/>
             <Field label="PASSWORD" type="password" value={password} onChange={setPassword} placeholder="Min 8 characters"/>
             <Field label="CONFIRM PASSWORD" type="password" value={password2} onChange={setPassword2} placeholder="Repeat password"/>
-            <button type="submit" disabled={loading} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${C.violet},${C.violetDim})`,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:6,boxShadow:"0 0 24px rgba(124,58,237,0.4)"}}>
+            <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",marginBottom:10}}>
+              <input type="checkbox" checked={ageGate} onChange={e => setAgeGate(e.target.checked)} style={{marginTop:3,width:16,height:16,accentColor:C.violet,flexShrink:0}}/>
+              <span style={{fontSize:12,color:C.muted,lineHeight:1.5}}>I confirm I am <strong style={{color:C.subtle}}>18 years of age or older</strong></span>
+            </label>
+            <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",marginBottom:16}}>
+              <input type="checkbox" checked={tosAccepted} onChange={e => setTosAccepted(e.target.checked)} style={{marginTop:3,width:16,height:16,accentColor:C.violet,flexShrink:0}}/>
+              <span style={{fontSize:12,color:C.muted,lineHeight:1.5}}>I agree to the <strong style={{color:C.aqua}}>Terms of Service</strong> and <strong style={{color:C.aqua}}>Privacy Policy</strong></span>
+            </label>
+            <button type="submit" disabled={loading} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${C.violet},${C.violetDim})`,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 0 24px rgba(124,58,237,0.4)"}}>
               {loading ? <Spinner/> : "Create account →"}
             </button>
           </form>
@@ -284,6 +296,155 @@ function playNotifSound() {
   } catch { /* browser blocked audio */ }
 }
 
+// ── Idle timeout auto-logout ─────────────────────────────────────────────────
+function useIdleTimeout(onTimeout, minutes = 20) {
+  useEffect(() => {
+    let timer;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(onTimeout, minutes * 60 * 1000);
+    };
+    const events = ["mousemove","keydown","touchstart","click","scroll"];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(timer);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
+  }, [onTimeout, minutes]);
+}
+
+// ── ToS Modal ─────────────────────────────────────────────────────────────────
+function ToSModal({ onAccept }) {
+  const [accepted, setAccepted] = useState(false);
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div className="glass" style={{borderRadius:20,padding:28,maxWidth:480,width:"100%",maxHeight:"80vh",display:"flex",flexDirection:"column",gap:16}}>
+        <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif"}}>Terms of Service & Privacy</h2>
+        <div style={{flex:1,overflowY:"auto",fontSize:13,color:C.muted,lineHeight:1.7,display:"flex",flexDirection:"column",gap:10}}>
+          <p><strong style={{color:C.subtle}}>MindBridge</strong> is a mental health support tool. It is <strong>not a replacement</strong> for professional care or emergency services.</p>
+          <p><strong style={{color:C.subtle}}>Data we collect:</strong> Account information, mood entries, chat sessions, and assessments to provide the service. Governed by the Uganda Data Protection and Privacy Act 2019.</p>
+          <p><strong style={{color:C.subtle}}>Data sharing:</strong> Therapists you connect with can see your mood trends and session summaries. We never sell your data.</p>
+          <p><strong style={{color:C.subtle}}>Crisis situations:</strong> In life-threatening situations, we may contact emergency services or provide your information to crisis responders.</p>
+          <p><strong style={{color:C.subtle}}>Data retention:</strong> You may export or delete your data at any time from Account Settings.</p>
+          <p style={{fontSize:11,color:C.muted}}>Version 1.0 — June 2026</p>
+        </div>
+        <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
+          <input type="checkbox" checked={accepted} onChange={e => setAccepted(e.target.checked)} style={{marginTop:2,width:16,height:16,accentColor:C.violet}}/>
+          <span style={{fontSize:13,color:C.subtle,lineHeight:1.5}}>I have read and agree to the Terms of Service and Privacy Policy. I confirm I am 18 years of age or older.</span>
+        </label>
+        <button onClick={onAccept} disabled={!accepted} className="btn-primary" style={{width:"100%",padding:13,opacity:accepted?1:0.4}}>
+          Continue →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Breathing Exercise ────────────────────────────────────────────────────────
+function BreathingExercise({ onClose }) {
+  const phases = [
+    {label:"Inhale",duration:4,color:C.aqua},
+    {label:"Hold",duration:4,color:"#FCD34D"},
+    {label:"Exhale",duration:4,color:C.violet},
+    {label:"Hold",duration:4,color:"#F97316"},
+  ];
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const [count, setCount] = useState(phases[0].duration);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    if (!running) return;
+    const tick = setInterval(() => {
+      setCount(c => {
+        if (c <= 1) {
+          setPhaseIdx(p => {
+            const next = (p + 1) % phases.length;
+            setCount(phases[next].duration);
+            return next;
+          });
+          return phases[(phaseIdx + 1) % phases.length].duration;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [running, phaseIdx]);
+
+  const phase = phases[phaseIdx];
+  const progress = 1 - (count / phase.duration);
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(10,8,24,0.95)",zIndex:1800,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:32}}>
+      <h2 style={{color:C.text,fontSize:20,fontWeight:800,fontFamily:"Georgia,serif"}}>Box Breathing</h2>
+      <div style={{position:"relative",width:180,height:180}}>
+        <svg width={180} height={180} style={{position:"absolute",top:0,left:0}}>
+          <circle cx={90} cy={90} r={80} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={8}/>
+          <circle cx={90} cy={90} r={80} fill="none" stroke={phase.color} strokeWidth={8}
+            strokeDasharray={`${2*Math.PI*80}`}
+            strokeDashoffset={`${2*Math.PI*80*(1-progress)}`}
+            strokeLinecap="round"
+            style={{transform:"rotate(-90deg)",transformOrigin:"90px 90px",transition:"stroke-dashoffset 0.9s linear"}}/>
+        </svg>
+        <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+          <div style={{fontSize:38,fontWeight:800,color:phase.color}}>{count}</div>
+          <div style={{fontSize:14,color:C.muted,fontWeight:600}}>{phase.label}</div>
+        </div>
+      </div>
+      <p style={{color:C.muted,fontSize:13,textAlign:"center",maxWidth:280}}>4-4-4-4 Box Breathing · Reduces anxiety and activates the parasympathetic nervous system</p>
+      <div style={{display:"flex",gap:12}}>
+        <button className="btn-primary" style={{padding:"10px 28px"}} onClick={() => setRunning(r => !r)}>
+          {running ? "Pause" : "Start"}
+        </button>
+        <button className="btn-ghost" style={{padding:"10px 20px"}} onClick={onClose}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Session Feedback Modal ────────────────────────────────────────────────────
+function SessionFeedbackModal({ sessionId, onClose }) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (rating === 0) return;
+    setSaving(true);
+    await wellbeingAPI.submitSessionFeedback(sessionId, rating, comment);
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1700,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div className="glass" style={{borderRadius:"20px 20px 0 0",padding:28,width:"100%",maxWidth:480,animation:"slideUp .3s ease"}}>
+        <div style={{textAlign:"center",marginBottom:16}}>
+          <div style={{fontSize:28,marginBottom:8}}>✦</div>
+          <h3 style={{color:C.text,fontSize:17,fontWeight:800,fontFamily:"Georgia,serif"}}>How was this session?</h3>
+          <p style={{color:C.muted,fontSize:13,marginTop:4}}>Your feedback helps us improve</p>
+        </div>
+        <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:16}}>
+          {[1,2,3,4,5].map(n => (
+            <button key={n} onClick={() => setRating(n)}
+              style={{fontSize:28,background:"none",border:"none",cursor:"pointer",opacity:n <= rating ? 1 : 0.3,transition:"opacity .15s"}}>
+              ⭐
+            </button>
+          ))}
+        </div>
+        <textarea value={comment} onChange={e => setComment(e.target.value)} placeholder="Any comments? (optional)" rows={2}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"none",fontFamily:"system-ui,sans-serif",marginBottom:14}}/>
+        <div style={{display:"flex",gap:10}}>
+          <button className="btn-primary" style={{flex:1,padding:"11px"}} onClick={submit} disabled={saving || rating===0}>
+            {saving ? "Submitting…" : "Submit"}
+          </button>
+          <button className="btn-ghost" style={{padding:"11px 18px"}} onClick={onClose}>Skip</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── AI Chat Module ─────────────────────────────────────────────────────────────
 function ChatModule({ mod, user, onBack, onOpenTherapists }) {
   const [messages, setMessages] = useState([{id:"intro",role:"assistant",content:INTROS[mod.id]||"How are you feeling?",created_at:new Date().toISOString()}]);
@@ -297,6 +458,8 @@ function ChatModule({ mod, user, onBack, onOpenTherapists }) {
   const [therapistModal, setTherapistModal] = useState(null);
   const [requestSent, setRequestSent] = useState(null); // { therapistName }
   const [sendingReq, setSendingReq] = useState(null); // therapist id being requested
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [showBreathing, setShowBreathing] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sessionIdRef = useRef(null);
@@ -368,8 +531,12 @@ function ChatModule({ mod, user, onBack, onOpenTherapists }) {
   }
 
   async function endSession() {
-    if (sessionIdRef.current) await chatAPI.endSession(sessionIdRef.current);
-    onBack();
+    if (sessionIdRef.current) {
+      await chatAPI.endSession(sessionIdRef.current);
+      setShowFeedback(true);
+    } else {
+      onBack();
+    }
   }
 
   async function handleTalkToTherapist() {
@@ -411,11 +578,18 @@ function ChatModule({ mod, user, onBack, onOpenTherapists }) {
     return <DirectChat connection={inAppChat} currentUser={user} onBack={() => setInAppChat(null)}/>;
   }
 
+  if (showBreathing) {
+    return <BreathingExercise onClose={() => setShowBreathing(false)}/>;
+  }
+
   const chips = CHIPS[mod.id] || [];
 
   return (
     <div style={{height:"100vh",display:"flex",flexDirection:"column",background:C.bg,fontFamily:"system-ui,sans-serif",position:"relative"}}>
       <style>{CSS}</style>
+      {showFeedback && sessionIdRef.current && (
+        <SessionFeedbackModal sessionId={sessionIdRef.current} onClose={() => { setShowFeedback(false); onBack(); }}/>
+      )}
       <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:500,height:180,background:`radial-gradient(ellipse,${mod.color}14,transparent 70%)`,pointerEvents:"none"}}/>
 
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0,zIndex:2,position:"relative"}}>
@@ -428,6 +602,7 @@ function ChatModule({ mod, user, onBack, onOpenTherapists }) {
             <span style={{color:C.muted,fontSize:11}}>Active · {user?.name || user?.email}</span>
           </div>
         </div>
+        <button onClick={() => setShowBreathing(true)} style={{background:"rgba(45,212,191,0.08)",border:"1px solid rgba(45,212,191,0.15)",borderRadius:50,padding:"4px 10px",color:C.aqua,fontSize:11,cursor:"pointer"}} title="Breathing exercise">🫁</button>
         <button onClick={endSession} style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:50,padding:"4px 12px",color:"#F87171",fontSize:11,cursor:"pointer"}}>End</button>
       </div>
 
@@ -934,7 +1109,7 @@ function WellbeingTab({ user }) {
   const [sessions, setSessions] = useState([]);
   const [safetyPlan, setSafetyPlan] = useState(null);
   const [outcomes, setOutcomes] = useState(null);
-  const [section, setSection] = useState("mood"); // mood | safety | history | assessment
+  const [section, setSection] = useState("mood"); // mood | safety | history | assessment | gratitude | tasks
   const [moodInput, setMoodInput] = useState(null);
   const [moodNote, setMoodNote] = useState("");
   const [savingMood, setSavingMood] = useState(false);
@@ -943,6 +1118,11 @@ function WellbeingTab({ user }) {
   const [safetySaved, setSafetySaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [assessments, setAssessments] = useState([]);
+  const [gratitude, setGratitude] = useState([]);
+  const [gratItems, setGratItems] = useState(["","",""]);
+  const [savingGrat, setSavingGrat] = useState(false);
+  const [tasks, setTasks] = useState([]);
+  const [showBreathing, setShowBreathing] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -952,13 +1132,17 @@ function WellbeingTab({ user }) {
       wellbeingAPI.getOutcomes(),
       wellbeingAPI.getAssessments(),
       wellbeingAPI.getSessions(),
-    ]).then(([m, sp, out, ass, sess]) => {
+      wellbeingAPI.getGratitude(),
+      wellbeingAPI.getPatientTasks(),
+    ]).then(([m, sp, out, ass, sess, grat, tsk]) => {
       setMoods(Array.isArray(m) ? m.slice(0, 30) : []);
       if (sp) { setSafetyPlan(sp); setSafetyForm(sp); }
       else { const blank = {warning_signs:[],coping_strategies:[],reasons_to_live:[],support_contacts:[],professional_contacts:[],crisis_number:"+256787671827",environment_safety:""}; setSafetyPlan(blank); setSafetyForm(blank); }
       setOutcomes(out);
       setAssessments(Array.isArray(ass) ? ass : []);
       setSessions(Array.isArray(sess) ? sess : []);
+      setGratitude(Array.isArray(grat) ? grat : []);
+      setTasks(Array.isArray(tsk) ? tsk : []);
       setLoading(false);
     });
   }, []);
@@ -981,6 +1165,25 @@ function WellbeingTab({ user }) {
     setTimeout(() => setSafetySaved(false), 3000);
     setSavingSafety(false);
   }
+
+  async function logGratitude() {
+    const items = gratItems.filter(i => i.trim());
+    if (items.length === 0) return;
+    setSavingGrat(true);
+    await wellbeingAPI.addGratitude(items);
+    const g = await wellbeingAPI.getGratitude();
+    setGratitude(Array.isArray(g) ? g : []);
+    setGratItems(["","",""]);
+    setSavingGrat(false);
+  }
+
+  async function completeTask(taskId) {
+    await wellbeingAPI.completePatientTask(taskId);
+    const tsk = await wellbeingAPI.getPatientTasks();
+    setTasks(Array.isArray(tsk) ? tsk : []);
+  }
+
+  if (showBreathing) return <BreathingExercise onClose={() => setShowBreathing(false)}/>;
 
   function ArrayField({ label, value, onChange }) {
     const [newItem, setNewItem] = useState("");
@@ -1019,12 +1222,29 @@ function WellbeingTab({ user }) {
         <p style={{color:C.muted,fontSize:13}}>Track your mood, safety plan, and session history</p>
       </div>
 
+      {/* PHQ re-test reminder */}
+      {(() => {
+        const lastPhq = assessments.filter(a => a.type === "phq9")[0];
+        if (!lastPhq) return null;
+        const daysSince = Math.floor((Date.now() - new Date(lastPhq.created_at)) / 86400000);
+        if (daysSince < 14) return null;
+        return (
+          <div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",gap:10,alignItems:"center"}}>
+            <span>📋</span>
+            <p style={{color:"#FCD34D",fontSize:12,lineHeight:1.5,flex:1}}>
+              It's been <strong>{daysSince} days</strong> since your last PHQ-9. Consider retaking it to track your progress.
+            </p>
+            <button onClick={() => setSection("assessment")} style={{background:"rgba(245,158,11,0.15)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:8,padding:"5px 10px",color:"#FCD34D",fontSize:11,cursor:"pointer",flexShrink:0}}>View</button>
+          </div>
+        );
+      })()}
+
       {/* Quick stats */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:18}}>
         {[
           {label:"Latest mood", value: latestScore !== undefined ? `${latestScore}/10` : "—", color: latestScore !== undefined ? moodColor(latestScore) : C.muted},
-          {label:"Sessions", value: sessions.length, color: C.violet},
-          {label:"Assessments", value: assessments.length, color: C.aqua},
+          {label:"Streak 🔥", value: outcomes?.streak_days ? `${outcomes.streak_days}d` : "—", color: "#F97316"},
+          {label:"Tasks pending", value: tasks.filter(t => !t.completed).length, color: C.aqua},
         ].map(s => (
           <div key={s.label} className="glass" style={{borderRadius:14,padding:"12px 14px",textAlign:"center"}}>
             <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.value}</div>
@@ -1035,7 +1255,7 @@ function WellbeingTab({ user }) {
 
       {/* Section tabs */}
       <div style={{display:"flex",gap:6,marginBottom:16,overflowX:"auto"}}>
-        {[{id:"mood",label:"Mood"},{ id:"safety",label:"Safety Plan"},{id:"history",label:"Sessions"},{id:"assessment",label:"Assessments"}].map(s => (
+        {[{id:"mood",label:"Mood"},{id:"gratitude",label:"Gratitude"},{id:"tasks",label:"Tasks"},{id:"safety",label:"Safety Plan"},{id:"history",label:"Sessions"},{id:"assessment",label:"Assessments"}].map(s => (
           <button key={s.id} onClick={()=>setSection(s.id)}
             style={{flexShrink:0,borderRadius:50,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
               background:section===s.id?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
@@ -1097,6 +1317,78 @@ function WellbeingTab({ user }) {
             </div>
           )}
           {last7.length === 0 && <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>No mood entries yet. Log your first one above!</div>}
+
+          {/* Breathing exercise shortcut */}
+          <button onClick={() => setShowBreathing(true)} className="glass" style={{width:"100%",borderRadius:14,padding:"12px 14px",marginTop:12,display:"flex",alignItems:"center",gap:12,cursor:"pointer",border:`1px solid ${C.border}`,background:"rgba(45,212,191,0.04)"}}>
+            <span style={{fontSize:22}}>🫁</span>
+            <div style={{textAlign:"left"}}>
+              <div style={{color:C.text,fontWeight:700,fontSize:13}}>Box Breathing</div>
+              <div style={{color:C.muted,fontSize:11}}>4-4-4-4 exercise to reduce anxiety</div>
+            </div>
+            <span style={{marginLeft:"auto",color:C.aqua,fontSize:13}}>Start →</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Gratitude journal ── */}
+      {section === "gratitude" && (
+        <div>
+          <div className="glass" style={{borderRadius:16,padding:16,marginBottom:16}}>
+            <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:4}}>Today's Gratitude</div>
+            <p style={{color:C.muted,fontSize:12,marginBottom:12}}>List 3 things you're grateful for today</p>
+            {gratItems.map((item, i) => (
+              <input key={i} value={item} onChange={e => { const a = [...gratItems]; a[i] = e.target.value; setGratItems(a); }}
+                placeholder={`Gratitude ${i + 1}…`}
+                style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif",marginBottom:8}}/>
+            ))}
+            <button onClick={logGratitude} disabled={savingGrat || gratItems.every(i=>!i.trim())} className="btn-primary" style={{padding:"8px 20px",fontSize:13}}>
+              {savingGrat ? "Saving…" : "Log gratitude"}
+            </button>
+          </div>
+          {gratitude.length > 0 && (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {gratitude.slice(0,10).map(g => (
+                <div key={g.id} className="glass" style={{borderRadius:14,padding:14}}>
+                  <div style={{color:C.muted,fontSize:11,marginBottom:6}}>{new Date(g.created_at).toLocaleDateString()}</div>
+                  {(g.items||[]).map((item, i) => (
+                    <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:4}}>
+                      <span style={{color:C.aqua,fontSize:12,marginTop:1}}>✦</span>
+                      <span style={{color:C.text,fontSize:13}}>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {gratitude.length === 0 && <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>No gratitude entries yet. Log your first one above!</div>}
+        </div>
+      )}
+
+      {/* ── Assigned tasks ── */}
+      {section === "tasks" && (
+        <div>
+          <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:12}}>Tasks from Your Therapist</div>
+          {tasks.length === 0 ? (
+            <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>No tasks assigned yet.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {tasks.map(task => (
+                <div key={task.id} className="glass" style={{borderRadius:14,padding:14,opacity:task.completed?0.6:1}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+                    <button onClick={() => !task.completed && completeTask(task.id)}
+                      style={{width:22,height:22,borderRadius:6,border:`2px solid ${task.completed?C.aqua:C.border}`,background:task.completed?"rgba(45,212,191,0.15)":"transparent",cursor:task.completed?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>
+                      {task.completed && <span style={{color:C.aqua,fontSize:13}}>✓</span>}
+                    </button>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:13,textDecoration:task.completed?"line-through":"none"}}>{task.title}</div>
+                      {task.description && <div style={{color:C.muted,fontSize:12,marginTop:3}}>{task.description}</div>}
+                      {task.due_date && <div style={{color:"#FCD34D",fontSize:11,marginTop:4}}>Due: {new Date(task.due_date).toLocaleDateString()}</div>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1954,6 +2246,455 @@ function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home", la
   );
 }
 
+// ── Patient Card with Warm Handoff ────────────────────────────────────────────
+function PatientCard({ patient: p }) {
+  const [handoff, setHandoff] = useState(null);
+  const [loadingHandoff, setLoadingHandoff] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  async function loadHandoff() {
+    if (handoff) { setExpanded(e => !e); return; }
+    setLoadingHandoff(true);
+    const data = await therapistAPI.getWarmHandoff(p.patient_id);
+    setHandoff(data);
+    setExpanded(true);
+    setLoadingHandoff(false);
+  }
+
+  return (
+    <div className="glass" style={{borderRadius:14,padding:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+        <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${C.violet},${C.aqua})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:"#fff",fontWeight:700}}>
+          {(p.patient_name||"?")[0].toUpperCase()}
+        </div>
+        <div style={{flex:1}}>
+          <div style={{color:C.text,fontWeight:700,fontSize:14}}>{p.patient_name}</div>
+          <div style={{color:C.muted,fontSize:11}}>{p.patient_email}</div>
+        </div>
+        {p.last_mood && <span style={{fontSize:11,color:C.muted}}>Mood: {p.last_mood}</span>}
+        <button onClick={loadHandoff} disabled={loadingHandoff}
+          style={{background:"rgba(124,58,237,0.1)",border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 10px",color:"#A78BFA",fontSize:11,cursor:"pointer"}}>
+          {loadingHandoff ? "…" : expanded ? "Hide" : "Handoff"}
+        </button>
+      </div>
+
+      {/* Warm handoff panel */}
+      {expanded && handoff && (
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:4,display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{fontSize:11,color:C.violet,fontWeight:700,letterSpacing:"0.05em"}}>WARM HANDOFF SUMMARY</div>
+          {handoff.active_crisis && (
+            <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,padding:"8px 10px",display:"flex",gap:8,alignItems:"center"}}>
+              <span>🚨</span>
+              <span style={{color:"#FCA5A5",fontSize:12}}>Active crisis flag · severity: {handoff.active_crisis.severity}</span>
+            </div>
+          )}
+          {handoff.latest_phq && (
+            <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+              <span style={{fontSize:12,color:C.muted}}>PHQ-9: <strong style={{color:C.text}}>{handoff.latest_phq.total_score}</strong> ({handoff.latest_phq.severity})</span>
+              <span style={{fontSize:12,color:C.muted}}>Date: <strong style={{color:C.text}}>{new Date(handoff.latest_phq.created_at).toLocaleDateString()}</strong></span>
+            </div>
+          )}
+          {handoff.recent_moods?.length > 0 && (
+            <div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Recent moods</div>
+              <div style={{display:"flex",gap:5,alignItems:"flex-end",height:40}}>
+                {handoff.recent_moods.slice(0,7).map((m, i) => {
+                  const col = m.score >= 7 ? C.aqua : m.score >= 4 ? "#FCD34D" : "#EF4444";
+                  return <div key={i} style={{flex:1,background:col,borderRadius:"3px 3px 0 0",height:`${(m.score/10)*36}px`,minHeight:3}}/>;
+                })}
+              </div>
+            </div>
+          )}
+          {handoff.last_session?.summary && (
+            <div style={{fontSize:12,color:C.muted,fontStyle:"italic",lineHeight:1.5}}>"{handoff.last_session.summary}"</div>
+          )}
+        </div>
+      )}
+
+      {p.recent_sessions?.length > 0 && !expanded && (
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4}}>
+          <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Recent sessions</div>
+          {p.recent_sessions.slice(0,2).map(s => (
+            <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+              {s.crisis_flag && <span style={{fontSize:10,color:"#F87171"}}>🚨</span>}
+              <span style={{fontSize:11,color:C.subtle,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.summary || s.module}</span>
+              <span style={{fontSize:10,color:C.muted}}>{new Date(s.created_at).toLocaleDateString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Therapist Tasks Tab ────────────────────────────────────────────────────────
+function TherapistTasksTab({ connections }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [patientId, setPatientId] = useState("");
+  const [form, setForm] = useState({title:"",description:"",due_date:""});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    therapistAPI.getTasks().then(data => { setTasks(Array.isArray(data) ? data : []); setLoading(false); });
+  }, []);
+
+  async function createTask() {
+    if (!form.title || !patientId) return;
+    setSaving(true);
+    const result = await therapistAPI.createTask({...form, patient: patientId});
+    if (result.ok) {
+      const data = await therapistAPI.getTasks();
+      setTasks(Array.isArray(data) ? data : []);
+      setForm({title:"",description:"",due_date:""});
+    }
+    setSaving(false);
+  }
+
+  async function markComplete(id) {
+    await therapistAPI.completeTask(id);
+    const data = await therapistAPI.getTasks();
+    setTasks(Array.isArray(data) ? data : []);
+  }
+
+  if (loading) return <div style={{display:"flex",justifyContent:"center",paddingTop:60}}><Spinner/></div>;
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Between-Session Tasks</h2>
+      <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Assign therapeutic tasks to patients</p>
+
+      {/* Create task */}
+      <div className="glass" style={{borderRadius:16,padding:16,marginBottom:20}}>
+        <div style={{fontWeight:700,color:C.text,fontSize:14,marginBottom:12}}>Assign New Task</div>
+        <select value={patientId} onChange={e => setPatientId(e.target.value)}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:patientId?C.text:C.muted,outline:"none",marginBottom:8,fontFamily:"system-ui,sans-serif"}}>
+          <option value="">Select patient…</option>
+          {connections.map(c => <option key={c.id} value={c.id}>{c.patient_name}</option>)}
+        </select>
+        <input value={form.title} onChange={e => setForm(f=>({...f,title:e.target.value}))} placeholder="Task title…"
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",marginBottom:8,fontFamily:"system-ui,sans-serif"}}/>
+        <textarea value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} placeholder="Description (optional)…" rows={2}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",resize:"none",fontFamily:"system-ui,sans-serif",marginBottom:8}}/>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <input type="date" value={form.due_date} onChange={e => setForm(f=>({...f,due_date:e.target.value}))}
+            style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+          <button className="btn-primary" onClick={createTask} disabled={saving||!form.title||!patientId} style={{padding:"9px 20px"}}>
+            {saving?"Saving…":"Assign"}
+          </button>
+        </div>
+      </div>
+
+      {/* Task list */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {tasks.map(task => (
+          <div key={task.id} className="glass" style={{borderRadius:14,padding:14,opacity:task.completed?0.6:1}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
+              <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${task.completed?C.aqua:C.border}`,background:task.completed?"rgba(45,212,191,0.15)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>
+                {task.completed && <span style={{color:C.aqua,fontSize:13}}>✓</span>}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{color:C.text,fontWeight:700,fontSize:13}}>{task.title}</div>
+                <div style={{color:C.muted,fontSize:11,marginTop:1}}>Patient: {task.patient_name}</div>
+                {task.description && <div style={{color:C.muted,fontSize:12,marginTop:3}}>{task.description}</div>}
+                {task.due_date && <div style={{color:"#FCD34D",fontSize:11,marginTop:4}}>Due: {new Date(task.due_date).toLocaleDateString()}</div>}
+              </div>
+              {!task.completed && (
+                <button onClick={() => markComplete(task.id)}
+                  style={{background:"rgba(45,212,191,0.1)",border:`1px solid rgba(45,212,191,0.2)`,borderRadius:8,padding:"5px 10px",color:C.aqua,fontSize:11,cursor:"pointer",flexShrink:0}}>
+                  Mark done
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {tasks.length === 0 && <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>No tasks yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Treatment Plan Tab ────────────────────────────────────────────────────────
+function TreatmentPlanTab({ connections }) {
+  const [selectedConn, setSelectedConn] = useState(null);
+  const [plan, setPlan] = useState(null);
+  const [form, setForm] = useState({goals:[],interventions:"",strengths:"",review_date:""});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function loadPlan(conn) {
+    setSelectedConn(conn);
+    const data = await therapistAPI.getTreatmentPlan(conn.id);
+    if (data) { setPlan(data); setForm(data); }
+    else { setForm({goals:[],interventions:"",strengths:"",review_date:""}); }
+  }
+
+  async function savePlan() {
+    if (!selectedConn) return;
+    setSaving(true);
+    const result = await therapistAPI.saveTreatmentPlan(selectedConn.id, {
+      patient: selectedConn.id,
+      goals: form.goals,
+      interventions: form.interventions,
+      strengths: form.strengths,
+      review_date: form.review_date || null,
+    });
+    if (result.ok) { setPlan(result.data); setSaved(true); setTimeout(() => setSaved(false), 3000); }
+    setSaving(false);
+  }
+
+  function addGoal() {
+    setForm(f => ({...f, goals: [...f.goals, {goal:"",target_date:"",status:"active"}]}));
+  }
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Treatment Plans</h2>
+      <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Individualized care plans per patient</p>
+
+      {/* Patient selector */}
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:12,marginBottom:16,WebkitOverflowScrolling:"touch"}}>
+        {connections.map(c => (
+          <button key={c.id} onClick={() => loadPlan(c)}
+            style={{flexShrink:0,borderRadius:50,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
+              background:selectedConn?.id===c.id?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
+              borderColor:selectedConn?.id===c.id?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)",
+              color:selectedConn?.id===c.id?"#A78BFA":C.muted}}>
+            {c.patient_name}
+          </button>
+        ))}
+      </div>
+
+      {!selectedConn && <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>Select a patient to view or create their treatment plan.</div>}
+
+      {selectedConn && (
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* Goals */}
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <label style={{color:C.subtle,fontSize:11,fontWeight:600,letterSpacing:"0.05em"}}>GOALS</label>
+              <button onClick={addGoal} style={{background:"rgba(124,58,237,0.1)",border:`1px solid rgba(124,58,237,0.2)`,borderRadius:8,padding:"4px 10px",color:"#A78BFA",fontSize:11,cursor:"pointer"}}>+ Add goal</button>
+            </div>
+            {form.goals.length === 0 && <p style={{color:C.muted,fontSize:12}}>No goals yet. Click + Add goal.</p>}
+            {form.goals.map((g, i) => (
+              <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+                <input value={g.goal} onChange={e => setForm(f => { const goals=[...f.goals]; goals[i]={...goals[i],goal:e.target.value}; return {...f,goals}; })}
+                  placeholder="Goal description…" style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:12,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+                <input type="date" value={g.target_date||""} onChange={e => setForm(f => { const goals=[...f.goals]; goals[i]={...goals[i],target_date:e.target.value}; return {...f,goals}; })}
+                  style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 8px",fontSize:12,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+                <button onClick={() => setForm(f => ({...f,goals:f.goals.filter((_,j)=>j!==i)}))} style={{background:"rgba(239,68,68,0.1)",border:"none",borderRadius:6,padding:"7px 9px",color:"#F87171",cursor:"pointer",fontSize:12}}>✕</button>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:6,letterSpacing:"0.05em"}}>INTERVENTIONS</label>
+            <textarea value={form.interventions||""} onChange={e => setForm(f=>({...f,interventions:e.target.value}))} rows={3} placeholder="Therapeutic interventions planned…"
+              style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"vertical",fontFamily:"system-ui,sans-serif"}}/>
+          </div>
+
+          <div>
+            <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:6,letterSpacing:"0.05em"}}>CLIENT STRENGTHS</label>
+            <textarea value={form.strengths||""} onChange={e => setForm(f=>({...f,strengths:e.target.value}))} rows={2} placeholder="Patient strengths and resources…"
+              style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"vertical",fontFamily:"system-ui,sans-serif"}}/>
+          </div>
+
+          <div>
+            <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:6,letterSpacing:"0.05em"}}>REVIEW DATE</label>
+            <input type="date" value={form.review_date||""} onChange={e => setForm(f=>({...f,review_date:e.target.value}))}
+              style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+          </div>
+
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <button className="btn-primary" onClick={savePlan} disabled={saving} style={{padding:"10px 24px"}}>
+              {saving?"Saving…":"Save plan"}
+            </button>
+            {saved && <span style={{color:C.aqua,fontSize:13,fontWeight:600}}>Saved ✓</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Discharge Notes Tab ───────────────────────────────────────────────────────
+function DischargeTab({ connections }) {
+  const [selectedConn, setSelectedConn] = useState(null);
+  const [notes, setNotes] = useState([]);
+  const [form, setForm] = useState({presenting_problem:"",treatment_provided:"",outcome:"",recommendations:"",discharge_date:""});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function loadNotes(conn) {
+    setSelectedConn(conn);
+    const data = await therapistAPI.getDischargeNotes(conn.id);
+    setNotes(Array.isArray(data) ? data : []);
+  }
+
+  async function createNote() {
+    if (!selectedConn) return;
+    setSaving(true);
+    const result = await therapistAPI.createDischargeNote(selectedConn.id, {...form, patient: selectedConn.id});
+    if (result.ok) {
+      const data = await therapistAPI.getDischargeNotes(selectedConn.id);
+      setNotes(Array.isArray(data) ? data : []);
+      setForm({presenting_problem:"",treatment_provided:"",outcome:"",recommendations:"",discharge_date:""});
+      setSaved(true); setTimeout(() => setSaved(false), 3000);
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Discharge Summaries</h2>
+      <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Clinical discharge documentation</p>
+
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:12,marginBottom:16,WebkitOverflowScrolling:"touch"}}>
+        {connections.map(c => (
+          <button key={c.id} onClick={() => loadNotes(c)}
+            style={{flexShrink:0,borderRadius:50,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
+              background:selectedConn?.id===c.id?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
+              borderColor:selectedConn?.id===c.id?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)",
+              color:selectedConn?.id===c.id?"#A78BFA":C.muted}}>
+            {c.patient_name}
+          </button>
+        ))}
+      </div>
+
+      {!selectedConn && <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>Select a patient to create or view discharge summaries.</div>}
+
+      {selectedConn && (
+        <>
+          {notes.length > 0 && (
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+              {notes.map(n => (
+                <div key={n.id} className="glass" style={{borderRadius:14,padding:14}}>
+                  <div style={{color:C.text,fontWeight:700,fontSize:13,marginBottom:4}}>Discharge — {new Date(n.discharge_date||n.created_at).toLocaleDateString()}</div>
+                  <div style={{color:C.muted,fontSize:12,lineHeight:1.6}}><strong style={{color:C.subtle}}>Problem:</strong> {n.presenting_problem}</div>
+                  <div style={{color:C.muted,fontSize:12,lineHeight:1.6}}><strong style={{color:C.subtle}}>Outcome:</strong> {n.outcome}</div>
+                  <div style={{color:C.muted,fontSize:12,lineHeight:1.6}}><strong style={{color:C.subtle}}>Recommendations:</strong> {n.recommendations}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="glass" style={{borderRadius:16,padding:16}}>
+            <div style={{fontWeight:700,color:C.text,fontSize:14,marginBottom:12}}>New Discharge Summary</div>
+            {[
+              {key:"presenting_problem",label:"PRESENTING PROBLEM",rows:2},
+              {key:"treatment_provided",label:"TREATMENT PROVIDED",rows:3},
+              {key:"outcome",label:"OUTCOME",rows:2},
+              {key:"recommendations",label:"RECOMMENDATIONS",rows:2},
+            ].map(({key,label,rows}) => (
+              <div key={key} style={{marginBottom:10}}>
+                <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>{label}</label>
+                <textarea value={form[key]||""} onChange={e => setForm(f=>({...f,[key]:e.target.value}))} rows={rows}
+                  style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",resize:"vertical",fontFamily:"system-ui,sans-serif"}}/>
+              </div>
+            ))}
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>DISCHARGE DATE</label>
+              <input type="date" value={form.discharge_date||""} onChange={e => setForm(f=>({...f,discharge_date:e.target.value}))}
+                style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+            </div>
+            <div style={{display:"flex",gap:12,alignItems:"center"}}>
+              <button className="btn-primary" onClick={createNote} disabled={saving} style={{padding:"10px 24px"}}>
+                {saving?"Saving…":"Save summary"}
+              </button>
+              {saved && <span style={{color:C.aqua,fontSize:13,fontWeight:600}}>Saved ✓</span>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Monthly Report Tab ────────────────────────────────────────────────────────
+function MonthlyReportTab() {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function fetchReport() {
+    setLoading(true);
+    const data = await therapistAPI.getMonthlyReport(year, month);
+    setReport(data);
+    setLoading(false);
+  }
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Monthly Reports</h2>
+      <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Clinical activity summary for your practice</p>
+
+      <div className="glass" style={{borderRadius:16,padding:16,marginBottom:20}}>
+        <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))}
+            style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}>
+            {MONTHS.map((m,i) => <option key={i+1} value={i+1}>{m}</option>)}
+          </select>
+          <select value={year} onChange={e => setYear(Number(e.target.value))}
+            style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}>
+            {[now.getFullYear()-1, now.getFullYear()].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button className="btn-primary" onClick={fetchReport} disabled={loading} style={{padding:"9px 20px"}}>
+            {loading ? "Loading…" : "Generate"}
+          </button>
+        </div>
+      </div>
+
+      {report && (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Summary stats */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            {[
+              {label:"Sessions", value: report.total_sessions ?? 0, color: C.violet},
+              {label:"Notes", value: report.total_notes ?? 0, color: C.aqua},
+              {label:"Avg PHQ-9", value: report.avg_phq9 ? report.avg_phq9.toFixed(1) : "—", color: "#FCD34D"},
+            ].map(s => (
+              <div key={s.label} className="glass" style={{borderRadius:14,padding:"12px 14px",textAlign:"center"}}>
+                <div style={{fontSize:24,fontWeight:800,color:s.color}}>{s.value}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Appointments */}
+          {report.appointments?.length > 0 && (
+            <div className="glass" style={{borderRadius:14,padding:14}}>
+              <div style={{color:C.text,fontWeight:700,fontSize:13,marginBottom:10}}>Appointments ({report.appointments.length})</div>
+              {report.appointments.map((a, i) => (
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<report.appointments.length-1?`1px solid ${C.border}`:"none"}}>
+                  <span style={{fontSize:12,color:C.subtle}}>{a.patient_name}</span>
+                  <span style={{fontSize:11,color:C.muted}}>{new Date(a.scheduled_at).toLocaleDateString()} · {a.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Notes */}
+          {report.notes?.length > 0 && (
+            <div className="glass" style={{borderRadius:14,padding:14}}>
+              <div style={{color:C.text,fontWeight:700,fontSize:13,marginBottom:10}}>Clinical Notes ({report.notes.length})</div>
+              {report.notes.slice(0,5).map((n, i) => (
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<Math.min(report.notes.length,5)-1?`1px solid ${C.border}`:"none"}}>
+                  <span style={{fontSize:12,color:C.subtle}}>Patient {i+1}</span>
+                  <span style={{fontSize:11,color:C.muted}}>{new Date(n.session_date).toLocaleDateString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Therapist Dashboard ────────────────────────────────────────────────────────
 function TherapistDashboard({ user, onLogout }) {
   const [tab, setTab] = useState("patients");
@@ -2018,6 +2759,10 @@ function TherapistDashboard({ user, onLogout }) {
     {id:"requests", label:`Requests${pending.length ? ` (${pending.length})` : ""}`},
     {id:"messages", label:"Messages"},
     {id:"notes", label:"Notes"},
+    {id:"tasks", label:"Tasks"},
+    {id:"treatment", label:"Plans"},
+    {id:"discharge", label:"Discharge"},
+    {id:"reports", label:"Reports"},
     {id:"risk", label:"Risk"},
     {id:"audit", label:"Audit"},
     {id:"profile", label:"My Profile"},
@@ -2059,30 +2804,7 @@ function TherapistDashboard({ user, onLogout }) {
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {portal.patients.map(p => (
-                <div key={p.patient_id} className="glass" style={{borderRadius:14,padding:14}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                    <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${C.violet},${C.aqua})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:"#fff",fontWeight:700}}>
-                      {(p.patient_name||"?")[0].toUpperCase()}
-                    </div>
-                    <div>
-                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>{p.patient_name}</div>
-                      <div style={{color:C.muted,fontSize:11}}>{p.patient_email}</div>
-                    </div>
-                    {p.last_mood && <span style={{marginLeft:"auto",fontSize:11,color:C.muted}}>Mood: {p.last_mood}</span>}
-                  </div>
-                  {p.recent_sessions?.length > 0 && (
-                    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4}}>
-                      <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Recent sessions</div>
-                      {p.recent_sessions.slice(0,2).map(s => (
-                        <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                          {s.crisis_flag && <span style={{fontSize:10,color:"#F87171"}}>🚨</span>}
-                          <span style={{fontSize:11,color:C.subtle,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.summary || s.module}</span>
-                          <span style={{fontSize:10,color:C.muted}}>{new Date(s.created_at).toLocaleDateString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <PatientCard key={p.patient_id} patient={p}/>
               ))}
             </div>
           )}
@@ -2159,6 +2881,10 @@ function TherapistDashboard({ user, onLogout }) {
       )}
 
       {!loading && tab === "notes" && <ClinicalNotesTab user={user}/>}
+      {!loading && tab === "tasks" && <TherapistTasksTab connections={accepted}/>}
+      {!loading && tab === "treatment" && <TreatmentPlanTab connections={accepted}/>}
+      {!loading && tab === "discharge" && <DischargeTab connections={accepted}/>}
+      {!loading && tab === "reports" && <MonthlyReportTab/>}
       {!loading && tab === "risk" && <RiskFlagsTab/>}
       {!loading && tab === "audit" && <AuditLogTab/>}
 
@@ -2332,6 +3058,9 @@ export default function App() {
   }
 
   function handleLogout() { authAPI.logout(); setUser(null); setScreen("login"); }
+
+  // Auto-logout after 20 minutes of inactivity (only when logged in)
+  useIdleTimeout(handleLogout, 20);
 
   if (loading) return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
