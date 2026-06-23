@@ -1,4 +1,4 @@
-import { authAPI, chatAPI, therapistAPI } from "./api";
+import { authAPI, chatAPI, therapistAPI, wellbeingAPI } from "./api";
 import { useState, useRef, useEffect, useCallback } from "react";
 
 const C = {
@@ -228,7 +228,7 @@ function playNotifSound() {
 }
 
 // ── AI Chat Module ─────────────────────────────────────────────────────────────
-function ChatModule({ mod, user, onBack }) {
+function ChatModule({ mod, user, onBack, onOpenTherapists }) {
   const [messages, setMessages] = useState([{id:"intro",role:"assistant",content:INTROS[mod.id]||"How are you feeling?",created_at:new Date().toISOString()}]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -237,7 +237,9 @@ function ChatModule({ mod, user, onBack }) {
   const [handoff, setHandoff] = useState(null);
   const [handoffDismissed, setHandoffDismissed] = useState(false);
   const [inAppChat, setInAppChat] = useState(null);
-  const [therapistModal, setTherapistModal] = useState(null); // {accepted?, available}
+  const [therapistModal, setTherapistModal] = useState(null);
+  const [requestSent, setRequestSent] = useState(null); // { therapistName }
+  const [sendingReq, setSendingReq] = useState(null); // therapist id being requested
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const sessionIdRef = useRef(null);
@@ -315,12 +317,37 @@ function ChatModule({ mod, user, onBack }) {
 
   async function handleTalkToTherapist() {
     setTherapistModal({ loading: true });
-    const [conns, available] = await Promise.all([
-      therapistAPI.listConnections(),
-      therapistAPI.getAvailable(mod.id),
-    ]);
-    const accepted = (Array.isArray(conns) ? conns : []).find(c => c.status === 'accepted');
-    setTherapistModal({ accepted: accepted || null, available });
+    try {
+      const [conns, available, dir] = await Promise.all([
+        therapistAPI.listConnections(),
+        therapistAPI.getAvailable(mod.id),
+        therapistAPI.directory(),
+      ]);
+      const allConns = Array.isArray(conns) ? conns : [];
+      const accepted = allConns.filter(c => c.status === 'accepted');
+      const pending  = allConns.filter(c => c.status === 'pending');
+      setTherapistModal({
+        loading: false,
+        accepted,
+        pending,
+        available: available || { available: false },
+        directory: Array.isArray(dir) ? dir : [],
+        allConns,
+      });
+    } catch {
+      setTherapistModal({ loading: false, accepted: [], pending: [], available: { available: false }, directory: [], allConns: [] });
+    }
+  }
+
+  async function sendRequestFromModal(therapistId, therapistName) {
+    setSendingReq(therapistId);
+    const result = await therapistAPI.requestConnection(therapistId, '');
+    setSendingReq(null);
+    if (result.ok) {
+      setTherapistModal(null);
+      setRequestSent({ therapistName });
+      setTimeout(() => setRequestSent(null), 6000);
+    }
   }
 
   if (inAppChat) {
@@ -365,6 +392,17 @@ function ChatModule({ mod, user, onBack }) {
         })}
         <div ref={bottomRef}/>
       </div>
+
+      {requestSent && (
+        <div style={{padding:"10px 16px",background:"linear-gradient(135deg,rgba(45,212,191,0.12),rgba(124,58,237,0.08))",borderTop:"1px solid rgba(45,212,191,0.25)",display:"flex",alignItems:"center",gap:10,flexShrink:0,animation:"fadeUp .3s ease"}}>
+          <span style={{fontSize:18}}>✅</span>
+          <div style={{flex:1}}>
+            <span style={{color:C.aqua,fontWeight:700,fontSize:13}}>Request sent to {requestSent.therapistName}! </span>
+            <span style={{color:C.muted,fontSize:12}}>You'll be notified when they accept — keep chatting here.</span>
+          </div>
+          <button onClick={() => setRequestSent(null)} style={{background:"none",border:"none",color:C.muted,fontSize:16,cursor:"pointer"}}>×</button>
+        </div>
+      )}
 
       <div style={{padding:"0 14px 6px",flexShrink:0,zIndex:2}}>
         {showChips ? (
@@ -433,58 +471,114 @@ function ChatModule({ mod, user, onBack }) {
       {/* ── Therapist modal ── */}
       {therapistModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={() => setTherapistModal(null)}>
-          <div onClick={e => e.stopPropagation()} style={{background:"#13102A",borderRadius:"24px 24px 0 0",padding:"24px 20px 32px",width:"100%",maxWidth:480,animation:"slideUp .25s ease"}}>
+          <div onClick={e => e.stopPropagation()} style={{background:"#13102A",borderRadius:"24px 24px 0 0",padding:"24px 20px 32px",width:"100%",maxWidth:520,maxHeight:"80vh",overflowY:"auto",animation:"slideUp .25s ease"}}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.15)",borderRadius:2,margin:"0 auto 20px"}}/>
-            <h3 style={{color:C.text,fontSize:17,fontWeight:800,marginBottom:6,fontFamily:"Georgia,serif"}}>Talk to a therapist</h3>
-            <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Choose how you'd like to connect</p>
+            <h3 style={{color:C.text,fontSize:17,fontWeight:800,marginBottom:4,fontFamily:"Georgia,serif"}}>Talk to a therapist</h3>
 
             {therapistModal.loading ? (
-              <div style={{display:"flex",justifyContent:"center",padding:"20px 0"}}><Spinner/></div>
-            ) : (
+              <div style={{display:"flex",justifyContent:"center",padding:"30px 0"}}><Spinner/></div>
+            ) : therapistModal.accepted?.length > 0 ? (
+              /* ── Already connected to one or more therapists ── */
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {/* In-app chat if already connected */}
-                {therapistModal.accepted && (
-                  <button onClick={() => { setTherapistModal(null); setInAppChat(therapistModal.accepted); }}
-                    style={{background:"linear-gradient(135deg,rgba(124,58,237,0.2),rgba(45,212,191,0.1))",border:"1px solid rgba(124,58,237,0.4)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
+                <p style={{color:C.muted,fontSize:13,marginBottom:8}}>Open an in-app chat with your therapist</p>
+                {therapistModal.accepted.map(conn => (
+                  <button key={conn.id} onClick={() => { setTherapistModal(null); setInAppChat(conn); }}
+                    style={{background:"linear-gradient(135deg,rgba(124,58,237,0.18),rgba(45,212,191,0.08))",border:"1px solid rgba(124,58,237,0.35)",borderRadius:14,padding:"13px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
                     <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,overflow:"hidden",flexShrink:0}}>
-                      {therapistModal.accepted.therapist?.photo_url ? <img src={therapistModal.accepted.therapist.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
+                      {conn.therapist?.photo_url ? <img src={conn.therapist.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : "🧑‍⚕️"}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Chat with {therapistModal.accepted.therapist?.full_name || "your therapist"}</div>
-                      <div style={{color:C.aqua,fontSize:11,marginTop:2}}>💬 In-app · Private & secure</div>
+                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>{conn.therapist?.full_name || "Therapist"}</div>
+                      <div style={{color:C.muted,fontSize:11,marginTop:1}}>{(conn.therapist?.specializations||[]).join(" · ") || "Mental Health Specialist"}</div>
                     </div>
-                    <span style={{color:C.aqua,fontSize:18}}>›</span>
+                    <span style={{color:C.aqua,fontSize:11,fontWeight:700,background:"rgba(45,212,191,0.1)",padding:"3px 9px",borderRadius:50}}>💬 Chat</span>
                   </button>
-                )}
-
-                {/* WhatsApp if therapist available */}
+                ))}
+                {/* WhatsApp instant option */}
                 {therapistModal.available?.available && (
                   <a href={therapistModal.available.whatsapp_link} target="_blank" rel="noopener noreferrer"
-                    style={{background:`rgba(37,211,102,0.1)`,border:"1px solid rgba(37,211,102,0.3)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textDecoration:"none"}}>
-                    <div style={{width:40,height:40,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>💬</div>
+                    style={{background:"rgba(37,211,102,0.08)",border:"1px solid rgba(37,211,102,0.25)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,textDecoration:"none",marginTop:2}}>
+                    <span style={{fontSize:22}}>💬</span>
                     <div style={{flex:1}}>
-                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Connect via WhatsApp</div>
-                      <div style={{color:"#4ADE80",fontSize:11,marginTop:2}}>{therapistModal.available.therapist?.full_name || "Therapist"} · Available now</div>
+                      <div style={{color:C.text,fontWeight:700,fontSize:13}}>Talk on WhatsApp right now</div>
+                      <div style={{color:"#4ADE80",fontSize:11}}>{therapistModal.available.therapist?.full_name} · Available</div>
                     </div>
-                    <span style={{color:"#4ADE80",fontSize:18}}>›</span>
                   </a>
                 )}
+                {/* Browse all */}
+                <button onClick={() => { setTherapistModal(null); onOpenTherapists?.(); }}
+                  style={{background:"none",border:`1px dashed ${C.border}`,borderRadius:14,padding:"11px 16px",color:C.muted,fontSize:13,cursor:"pointer",marginTop:4}}>
+                  🔍 Browse all therapists
+                </button>
+              </div>
+            ) : (
+              /* ── Not connected yet ── */
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {/* How it works */}
+                <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:12,padding:"12px 14px",marginBottom:4}}>
+                  <div style={{color:C.subtle,fontSize:12,fontWeight:700,marginBottom:6}}>HOW IT WORKS</div>
+                  <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                    {["1 · Request","2 · They accept","3 · Chat in-app"].map((s,i) => (
+                      <div key={i} style={{flex:1,textAlign:"center"}}>
+                        <div style={{fontSize:18,marginBottom:3}}>["🙋","✅","💬"][i]</div>
+                        <div style={{color:C.muted,fontSize:11}}>{s}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{color:C.muted,fontSize:11,marginTop:8}}>Your AI session stays open while you wait.</p>
+                </div>
 
-                {/* Request connection if not yet connected */}
-                {!therapistModal.accepted && (
-                  <button onClick={() => { setTherapistModal(null); onBack(); }}
-                    style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",textAlign:"left",width:"100%"}}>
-                    <div style={{width:40,height:40,borderRadius:"50%",background:"rgba(124,58,237,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🔍</div>
-                    <div style={{flex:1}}>
-                      <div style={{color:C.text,fontWeight:700,fontSize:14}}>Find & connect with a therapist</div>
-                      <div style={{color:C.muted,fontSize:11,marginTop:2}}>Browse licensed professionals</div>
-                    </div>
-                    <span style={{color:C.muted,fontSize:18}}>›</span>
-                  </button>
+                {/* Top therapists from directory */}
+                {therapistModal.directory.length > 0 && (
+                  <>
+                    <p style={{color:C.subtle,fontSize:12,fontWeight:700,letterSpacing:"0.05em"}}>AVAILABLE THERAPISTS</p>
+                    {therapistModal.directory.slice(0, 3).map(t => {
+                      const conn = therapistModal.allConns.find(c => c.therapist?.id === t.id);
+                      const isPending = conn?.status === 'pending';
+                      return (
+                        <div key={t.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:12}}>
+                          <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#7C3AED,#2DD4BF)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
+                            {t.photo_url ? <img src={t.photo_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:18}}>🧑‍⚕️</span>}
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{color:C.text,fontWeight:700,fontSize:13}}>{t.full_name}</div>
+                            <div style={{color:C.muted,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(t.specializations||[]).join(" · ")}</div>
+                          </div>
+                          {isPending ? (
+                            <span style={{fontSize:11,color:"#FCD34D",background:"rgba(245,158,11,0.1)",borderRadius:50,padding:"4px 10px",flexShrink:0}}>⏳ Pending</span>
+                          ) : (
+                            <button onClick={() => sendRequestFromModal(t.id, t.full_name)} disabled={sendingReq === t.id}
+                              style={{background:`linear-gradient(135deg,${C.violet},${C.violetDim})`,border:"none",borderRadius:50,padding:"6px 14px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,opacity:sendingReq===t.id?0.6:1}}>
+                              {sendingReq === t.id ? "…" : "Request"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
 
-                {!therapistModal.accepted && !therapistModal.available?.available && (
-                  <p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"8px 0"}}>No therapists available right now — try again later or connect in-app.</p>
+                {/* Browse all */}
+                <button onClick={() => { setTherapistModal(null); onOpenTherapists?.(); }}
+                  style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",width:"100%",textAlign:"left"}}>
+                  <span style={{fontSize:18}}>🔍</span>
+                  <div style={{flex:1}}>
+                    <div style={{color:C.text,fontWeight:700,fontSize:13}}>Browse all therapists</div>
+                    <div style={{color:C.muted,fontSize:11}}>Filter by specialization · Full profiles</div>
+                  </div>
+                  <span style={{color:C.muted,fontSize:16}}>›</span>
+                </button>
+
+                {/* WhatsApp instant fallback */}
+                {therapistModal.available?.available && (
+                  <a href={therapistModal.available.whatsapp_link} target="_blank" rel="noopener noreferrer"
+                    style={{background:"rgba(37,211,102,0.08)",border:"1px solid rgba(37,211,102,0.25)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,textDecoration:"none"}}>
+                    <span style={{fontSize:20}}>💬</span>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:13}}>Talk on WhatsApp right now</div>
+                      <div style={{color:"#4ADE80",fontSize:11}}>Instant · No waiting for acceptance</div>
+                    </div>
+                  </a>
                 )}
               </div>
             )}
@@ -639,9 +733,565 @@ function DirectChat({ connection, currentUser, onBack }) {
   );
 }
 
+// ── Consent Modal ──────────────────────────────────────────────────────────────
+function ConsentModal({ onAccept }) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#13102A",borderRadius:20,padding:28,maxWidth:440,width:"100%",animation:"slideUp .3s ease"}}>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:36,marginBottom:8}}>🔒</div>
+          <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:6}}>Your privacy matters</h2>
+          <p style={{color:C.muted,fontSize:13}}>Before we begin, here's how MindBridge handles your data</p>
+        </div>
+        {[
+          ["🧠","AI conversations","Your chats are processed to generate responses. They are stored securely and only visible to you and your connected therapist."],
+          ["📊","Mood & assessment data","Your check-ins and PHQ scores are used only to personalize your care and track your progress over time."],
+          ["🛡","Data security","All data is encrypted in transit and at rest. You can request deletion at any time."],
+          ["👤","Therapist access","If you connect with a therapist, they can see your session summaries and mood trends to provide better care."],
+        ].map(([icon, title, desc]) => (
+          <div key={title} style={{display:"flex",gap:12,marginBottom:14,alignItems:"flex-start"}}>
+            <span style={{fontSize:18,flexShrink:0,marginTop:1}}>{icon}</span>
+            <div>
+              <div style={{color:C.text,fontWeight:700,fontSize:13,marginBottom:2}}>{title}</div>
+              <div style={{color:C.muted,fontSize:12,lineHeight:1.5}}>{desc}</div>
+            </div>
+          </div>
+        ))}
+        <button onClick={onAccept} className="btn-primary" style={{width:"100%",padding:"12px",marginTop:8,fontSize:15}}>
+          I understand — continue →
+        </button>
+        <p style={{textAlign:"center",color:"#334155",fontSize:11,marginTop:12}}>
+          MindBridge is a wellness support tool, not a replacement for professional care.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── PHQ-9 Onboarding Assessment ───────────────────────────────────────────────
+const PHQ9_QUESTIONS = [
+  "Little interest or pleasure in doing things",
+  "Feeling down, depressed, or hopeless",
+  "Trouble falling or staying asleep, or sleeping too much",
+  "Feeling tired or having little energy",
+  "Poor appetite or overeating",
+  "Feeling bad about yourself — or that you are a failure",
+  "Trouble concentrating on things",
+  "Moving or speaking so slowly that other people could have noticed",
+  "Thoughts that you would be better off dead or of hurting yourself",
+];
+const PHQ9_OPTIONS = ["Not at all","Several days","More than half the days","Nearly every day"];
+
+function OnboardingModal({ onComplete, onSkip }) {
+  const [step, setStep] = useState(0); // 0 = intro, 1-9 = questions, 10 = done
+  const [answers, setAnswers] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const q = step >= 1 && step <= 9 ? PHQ9_QUESTIONS[step - 1] : null;
+  const progress = Math.round((step / 9) * 100);
+
+  async function finish() {
+    setSaving(true);
+    const responses = {};
+    let total = 0;
+    for (let i = 1; i <= 9; i++) {
+      responses[`q${i}`] = answers[i] ?? 0;
+      total += answers[i] ?? 0;
+    }
+    const severity = total <= 4 ? 'minimal' : total <= 9 ? 'mild' : total <= 14 ? 'moderate' : total <= 19 ? 'moderately_severe' : 'severe';
+    await wellbeingAPI.createAssessment('phq9', responses, total, severity);
+    setSaving(false);
+    onComplete(total, severity);
+  }
+
+  if (step === 0) return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#13102A",borderRadius:20,padding:28,maxWidth:420,width:"100%",animation:"slideUp .3s ease",textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>📋</div>
+        <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:8}}>Quick wellbeing check-in</h2>
+        <p style={{color:C.muted,fontSize:13,lineHeight:1.6,marginBottom:20}}>
+          The PHQ-9 is a validated 9-question screening used by clinicians worldwide. It takes under 2 minutes and helps us personalise your experience.
+        </p>
+        <div style={{display:"flex",gap:10,flexDirection:"column"}}>
+          <button className="btn-primary" style={{padding:"11px"}} onClick={() => setStep(1)}>Start check-in →</button>
+          <button onClick={onSkip} style={{background:"none",border:"none",color:C.muted,fontSize:13,cursor:"pointer",padding:"6px"}}>Skip for now</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (step >= 1 && step <= 9) return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#13102A",borderRadius:20,padding:28,maxWidth:420,width:"100%",animation:"slideUp .3s ease"}}>
+        {/* Progress */}
+        <div style={{marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+            <span style={{color:C.muted,fontSize:12}}>Question {step} of 9</span>
+            <span style={{color:C.muted,fontSize:12}}>{progress}%</span>
+          </div>
+          <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2}}>
+            <div style={{height:4,background:`linear-gradient(90deg,${C.violet},${C.aqua})`,borderRadius:2,width:`${progress}%`,transition:"width .3s"}}/>
+          </div>
+        </div>
+        <p style={{color:C.subtle,fontSize:12,marginBottom:8,fontWeight:600}}>Over the last 2 weeks, how often have you been bothered by…</p>
+        <h3 style={{color:C.text,fontSize:15,fontWeight:700,marginBottom:20,lineHeight:1.5}}>{q}</h3>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {PHQ9_OPTIONS.map((opt, i) => (
+            <button key={i} onClick={() => { setAnswers(a => ({...a,[step]:i})); setTimeout(() => setStep(s => s < 9 ? s+1 : 10), 120); }}
+              style={{background:answers[step]===i?"rgba(124,58,237,0.25)":"rgba(255,255,255,0.04)",border:`1px solid ${answers[step]===i?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)"}`,borderRadius:12,padding:"12px 16px",color:answers[step]===i?"#A78BFA":C.subtle,fontSize:14,cursor:"pointer",textAlign:"left",fontWeight:answers[step]===i?700:400}}>
+              <span style={{color:C.muted,fontSize:12,marginRight:8}}>{i}</span>{opt}
+            </button>
+          ))}
+        </div>
+        {step > 1 && <button onClick={() => setStep(s => s-1)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",marginTop:12}}>← Back</button>}
+      </div>
+    </div>
+  );
+
+  const total = Object.values(answers).reduce((a,b) => a+b, 0);
+  const severity = total <= 4 ? 'Minimal' : total <= 9 ? 'Mild' : total <= 14 ? 'Moderate' : total <= 19 ? 'Moderately severe' : 'Severe';
+  const color = total <= 4 ? C.aqua : total <= 9 ? '#4ADE80' : total <= 14 ? '#FCD34D' : total <= 19 ? '#F97316' : '#EF4444';
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#13102A",borderRadius:20,padding:28,maxWidth:420,width:"100%",animation:"slideUp .3s ease",textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>✅</div>
+        <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:8}}>Check-in complete</h2>
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"16px",marginBottom:20}}>
+          <div style={{fontSize:36,fontWeight:800,color,marginBottom:4}}>{total}/27</div>
+          <div style={{color,fontSize:16,fontWeight:700}}>{severity} symptoms</div>
+          {total >= 10 && <p style={{color:C.muted,fontSize:12,marginTop:8}}>Connecting with a therapist could be helpful. You'll find them in the Therapists tab.</p>}
+          {total < 10 && <p style={{color:C.muted,fontSize:12,marginTop:8}}>You're doing okay. Keep using the daily check-in to track your wellbeing over time.</p>}
+        </div>
+        <button className="btn-primary" style={{width:"100%",padding:"11px"}} disabled={saving} onClick={finish}>
+          {saving ? "Saving…" : "Continue to MindBridge →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Wellbeing Tab (mood + safety plan + session history) ───────────────────────
+function WellbeingTab({ user }) {
+  const [moods, setMoods] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [safetyPlan, setSafetyPlan] = useState(null);
+  const [outcomes, setOutcomes] = useState(null);
+  const [section, setSection] = useState("mood"); // mood | safety | history | assessment
+  const [moodInput, setMoodInput] = useState(null);
+  const [moodNote, setMoodNote] = useState("");
+  const [savingMood, setSavingMood] = useState(false);
+  const [safetyForm, setSafetyForm] = useState(null);
+  const [savingSafety, setSavingSafety] = useState(false);
+  const [safetySaved, setSafetySaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [assessments, setAssessments] = useState([]);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      wellbeingAPI.getMoods(),
+      wellbeingAPI.getSafetyPlan(),
+      wellbeingAPI.getOutcomes(),
+      wellbeingAPI.getAssessments(),
+      wellbeingAPI.getSessions(),
+    ]).then(([m, sp, out, ass, sess]) => {
+      setMoods(Array.isArray(m) ? m.slice(0, 30) : []);
+      if (sp) { setSafetyPlan(sp); setSafetyForm(sp); }
+      else { const blank = {warning_signs:[],coping_strategies:[],reasons_to_live:[],support_contacts:[],professional_contacts:[],crisis_number:"+256787671827",environment_safety:""}; setSafetyPlan(blank); setSafetyForm(blank); }
+      setOutcomes(out);
+      setAssessments(Array.isArray(ass) ? ass : []);
+      setSessions(Array.isArray(sess) ? sess : []);
+      setLoading(false);
+    });
+  }, []);
+
+  async function logMood() {
+    if (moodInput === null) return;
+    setSavingMood(true);
+    await wellbeingAPI.addMood(moodInput, moodNote);
+    const m = await wellbeingAPI.getMoods();
+    setMoods(Array.isArray(m) ? m.slice(0, 30) : []);
+    setMoodInput(null); setMoodNote("");
+    setSavingMood(false);
+  }
+
+  async function saveSafety() {
+    if (!safetyForm) return;
+    setSavingSafety(true);
+    await wellbeingAPI.saveSafetyPlan(safetyForm);
+    setSafetySaved(true);
+    setTimeout(() => setSafetySaved(false), 3000);
+    setSavingSafety(false);
+  }
+
+  function ArrayField({ label, value, onChange }) {
+    const [newItem, setNewItem] = useState("");
+    return (
+      <div style={{marginBottom:16}}>
+        <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:8,letterSpacing:"0.05em"}}>{label}</label>
+        <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:6}}>
+          {(value||[]).map((item, i) => (
+            <div key={i} style={{display:"flex",gap:8,alignItems:"center"}}>
+              <div style={{flex:1,background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,color:C.text}}>{item}</div>
+              <button onClick={() => onChange(value.filter((_,j)=>j!==i))} style={{background:"rgba(239,68,68,0.1)",border:"none",borderRadius:6,padding:"6px 8px",color:"#F87171",cursor:"pointer",fontSize:12}}>✕</button>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <input value={newItem} onChange={e=>setNewItem(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&newItem.trim()){onChange([...(value||[]),newItem.trim()]);setNewItem("");}}} placeholder="Add item…"
+            style={{flex:1,background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+          <button onClick={()=>{if(newItem.trim()){onChange([...(value||[]),newItem.trim()]);setNewItem("");}}} style={{background:`${C.violet}22`,border:`1px solid ${C.violet}44`,borderRadius:8,padding:"8px 12px",color:"#A78BFA",fontSize:13,cursor:"pointer"}}>+</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Mini bar chart for moods (last 7 days)
+  const last7 = moods.slice(0, 7).reverse();
+  const moodColor = s => s >= 7 ? C.aqua : s >= 4 ? "#FCD34D" : "#EF4444";
+  const latestScore = moods[0]?.score;
+
+  if (loading) return <div style={{display:"flex",justifyContent:"center",paddingTop:60}}><Spinner/></div>;
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 80px"}}>
+      {/* Summary header */}
+      <div style={{marginBottom:16}}>
+        <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Your Wellbeing</h2>
+        <p style={{color:C.muted,fontSize:13}}>Track your mood, safety plan, and session history</p>
+      </div>
+
+      {/* Quick stats */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:18}}>
+        {[
+          {label:"Latest mood", value: latestScore !== undefined ? `${latestScore}/10` : "—", color: latestScore !== undefined ? moodColor(latestScore) : C.muted},
+          {label:"Sessions", value: sessions.length, color: C.violet},
+          {label:"Assessments", value: assessments.length, color: C.aqua},
+        ].map(s => (
+          <div key={s.label} className="glass" style={{borderRadius:14,padding:"12px 14px",textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:800,color:s.color}}>{s.value}</div>
+            <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Section tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:16,overflowX:"auto"}}>
+        {[{id:"mood",label:"Mood"},{ id:"safety",label:"Safety Plan"},{id:"history",label:"Sessions"},{id:"assessment",label:"Assessments"}].map(s => (
+          <button key={s.id} onClick={()=>setSection(s.id)}
+            style={{flexShrink:0,borderRadius:50,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
+              background:section===s.id?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
+              borderColor:section===s.id?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)",
+              color:section===s.id?"#A78BFA":C.muted}}>{s.label}</button>
+        ))}
+      </div>
+
+      {/* ── Mood section ── */}
+      {section === "mood" && (
+        <div>
+          {/* Log mood */}
+          <div className="glass" style={{borderRadius:16,padding:16,marginBottom:16}}>
+            <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:10}}>How are you feeling right now?</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+              {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                <button key={n} onClick={()=>setMoodInput(n)}
+                  style={{width:36,height:36,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:13,fontWeight:700,
+                    background:moodInput===n?moodColor(n):"rgba(255,255,255,0.06)",
+                    color:moodInput===n?"#fff":C.muted,transition:"all .15s"}}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            {moodInput !== null && (
+              <div style={{animation:"fadeUp .2s ease"}}>
+                <textarea value={moodNote} onChange={e=>setMoodNote(e.target.value)} placeholder="Optional note about your mood…" rows={2}
+                  style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"none",fontFamily:"system-ui,sans-serif",marginBottom:8}}/>
+                <button onClick={logMood} disabled={savingMood} className="btn-primary" style={{padding:"8px 20px",fontSize:13}}>
+                  {savingMood?"Saving…":"Log mood"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 7-day trend */}
+          {last7.length > 0 && (
+            <div className="glass" style={{borderRadius:16,padding:16}}>
+              <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:14}}>7-day trend</div>
+              <div style={{display:"flex",gap:8,alignItems:"flex-end",height:80}}>
+                {last7.map((m, i) => (
+                  <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <div style={{width:"100%",borderRadius:"4px 4px 0 0",background:moodColor(m.score),height:`${(m.score/10)*70}px`,minHeight:4,transition:"height .4s"}}/>
+                    <div style={{fontSize:9,color:C.muted,textAlign:"center"}}>{new Date(m.created_at).toLocaleDateString([],{weekday:"short"})}</div>
+                  </div>
+                ))}
+              </div>
+              {outcomes && (
+                <div style={{marginTop:12,display:"flex",gap:16,flexWrap:"wrap"}}>
+                  {[
+                    {label:"Avg mood (30d)", value: outcomes.avg_mood ? outcomes.avg_mood.toFixed(1) : "—"},
+                    {label:"Best day", value: outcomes.max_mood || "—"},
+                    {label:"Total moods logged", value: outcomes.mood_count || 0},
+                  ].map(s => (
+                    <div key={s.label} style={{fontSize:12,color:C.muted}}><strong style={{color:C.subtle}}>{s.value}</strong> {s.label}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {last7.length === 0 && <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>No mood entries yet. Log your first one above!</div>}
+        </div>
+      )}
+
+      {/* ── Safety plan section ── */}
+      {section === "safety" && safetyForm && (
+        <div>
+          <div style={{background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:14,padding:"12px 14px",marginBottom:16,display:"flex",gap:10,alignItems:"flex-start"}}>
+            <span style={{fontSize:16}}>🚨</span>
+            <p style={{color:C.muted,fontSize:12,lineHeight:1.6}}>
+              Your personal safety plan. In a crisis, call <strong style={{color:C.subtle}}>+256787671827</strong> immediately.
+            </p>
+          </div>
+          <ArrayField label="WARNING SIGNS (thoughts/feelings/situations)" value={safetyForm.warning_signs} onChange={v=>setSafetyForm(f=>({...f,warning_signs:v}))}/>
+          <ArrayField label="COPING STRATEGIES (things I can do alone)" value={safetyForm.coping_strategies} onChange={v=>setSafetyForm(f=>({...f,coping_strategies:v}))}/>
+          <ArrayField label="REASONS TO LIVE" value={safetyForm.reasons_to_live} onChange={v=>setSafetyForm(f=>({...f,reasons_to_live:v}))}/>
+          <ArrayField label="PEOPLE I CAN REACH OUT TO" value={safetyForm.support_contacts} onChange={v=>setSafetyForm(f=>({...f,support_contacts:v}))}/>
+          <ArrayField label="PROFESSIONAL CONTACTS" value={safetyForm.professional_contacts} onChange={v=>setSafetyForm(f=>({...f,professional_contacts:v}))}/>
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:8,letterSpacing:"0.05em"}}>ENVIRONMENT SAFETY STEPS</label>
+            <textarea value={safetyForm.environment_safety||""} onChange={e=>setSafetyForm(f=>({...f,environment_safety:e.target.value}))} rows={3} placeholder="Steps I've taken to make my environment safer…"
+              style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"vertical",fontFamily:"system-ui,sans-serif"}}/>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <button onClick={saveSafety} disabled={savingSafety} className="btn-primary" style={{padding:"10px 24px"}}>
+              {savingSafety?"Saving…":"Save plan"}
+            </button>
+            {safetySaved && <span style={{color:C.aqua,fontSize:13,fontWeight:600}}>Saved ✓</span>}
+          </div>
+        </div>
+      )}
+
+      {/* ── Session history ── */}
+      {section === "history" && (
+        <div>
+          {sessions.length === 0 ? (
+            <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>No sessions yet. Start a module to begin.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {sessions.map(s => {
+                const mod = MODULES.find(m => m.id === s.module);
+                return (
+                  <div key={s.id} className="glass" style={{borderRadius:14,padding:14}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:s.summary?8:0}}>
+                      <div style={{width:36,height:36,borderRadius:10,background:`${mod?.color||C.violet}18`,border:`1px solid ${mod?.color||C.violet}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{mod?.icon||"✦"}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{color:C.text,fontWeight:700,fontSize:13}}>{mod?.label||s.module}</div>
+                        <div style={{color:C.muted,fontSize:11}}>{new Date(s.created_at).toLocaleDateString()} · {s.message_count||0} messages</div>
+                      </div>
+                      {s.crisis_flag && <span style={{fontSize:10,color:"#F87171",background:"rgba(239,68,68,0.1)",borderRadius:50,padding:"2px 8px"}}>⚠ Crisis</span>}
+                    </div>
+                    {s.summary && <div style={{color:C.muted,fontSize:12,lineHeight:1.5,borderTop:`1px solid ${C.border}`,paddingTop:8,marginTop:4}}>{s.summary}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Assessments ── */}
+      {section === "assessment" && (
+        <div>
+          {assessments.length === 0 ? (
+            <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:20}}>No assessments yet.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {assessments.map(a => {
+                const col = a.total_score <= 4 ? C.aqua : a.total_score <= 9 ? '#4ADE80' : a.total_score <= 14 ? '#FCD34D' : '#EF4444';
+                return (
+                  <div key={a.id} className="glass" style={{borderRadius:14,padding:14,display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{width:44,height:44,borderRadius:"50%",background:`${col}18`,border:`1px solid ${col}44`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <span style={{color:col,fontWeight:800,fontSize:16}}>{a.total_score}</span>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{color:C.text,fontWeight:700,fontSize:13}}>{a.type.toUpperCase()} · <span style={{color:col}}>{a.severity}</span></div>
+                      <div style={{color:C.muted,fontSize:11}}>{new Date(a.created_at).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Clinical Notes Tab (Therapist) ─────────────────────────────────────────────
+function ClinicalNotesTab({ user }) {
+  const [notes, setNotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editNote, setEditNote] = useState(null);
+  const [form, setForm] = useState({patient:"",session_date:new Date().toISOString().split("T")[0],subjective:"",objective:"",assessment:"",plan:""});
+  const [saving, setSaving] = useState(false);
+  const [connections, setConnections] = useState([]);
+
+  useEffect(() => {
+    Promise.all([therapistAPI.getClinicalNotes(), therapistAPI.listConnections()]).then(([n, c]) => {
+      setNotes(Array.isArray(n) ? n : []);
+      setConnections(Array.isArray(c) ? c.filter(x=>x.status==="accepted") : []);
+      setLoading(false);
+    });
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    if (editNote) {
+      await therapistAPI.updateClinicalNote(editNote.id, form);
+    } else {
+      await therapistAPI.createClinicalNote(form);
+    }
+    const n = await therapistAPI.getClinicalNotes();
+    setNotes(Array.isArray(n) ? n : []);
+    setShowForm(false); setEditNote(null);
+    setForm({patient:"",session_date:new Date().toISOString().split("T")[0],subjective:"",objective:"",assessment:"",plan:""});
+    setSaving(false);
+  }
+
+  if (loading) return <div style={{display:"flex",justifyContent:"center",paddingTop:60}}><Spinner/></div>;
+
+  if (showForm || editNote) return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <button onClick={()=>{setShowForm(false);setEditNote(null);}} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer"}}>←</button>
+        <h2 style={{color:C.text,fontSize:16,fontWeight:800,fontFamily:"Georgia,serif"}}>{editNote?"Edit note":"New clinical note"}</h2>
+      </div>
+      <div style={{background:"rgba(124,58,237,0.06)",border:"1px solid rgba(124,58,237,0.15)",borderRadius:12,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.muted}}>
+        SOAP format: <strong style={{color:C.subtle}}>S</strong>ubjective · <strong style={{color:C.subtle}}>O</strong>bjective · <strong style={{color:C.subtle}}>A</strong>ssessment · <strong style={{color:C.subtle}}>P</strong>lan
+      </div>
+      {!editNote && (
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>PATIENT</label>
+          <select value={form.patient} onChange={e=>setForm(f=>({...f,patient:e.target.value}))}
+            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:form.patient?C.text:C.muted,outline:"none",fontFamily:"system-ui,sans-serif"}}>
+            <option value="">Select patient…</option>
+            {connections.map(c => <option key={c.id} value={c.patient_email}>{c.patient_name}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>SESSION DATE</label>
+        <input type="date" value={form.session_date} onChange={e=>setForm(f=>({...f,session_date:e.target.value}))}
+          style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
+      </div>
+      {[["SUBJECTIVE (patient's perspective)","subjective"],["OBJECTIVE (observations/tests)","objective"],["ASSESSMENT (diagnosis/formulation)","assessment"],["PLAN (next steps)","plan"]].map(([lbl,key]) => (
+        <div key={key} style={{marginBottom:14}}>
+          <label style={{display:"block",color:C.subtle,fontSize:11,fontWeight:600,marginBottom:5,letterSpacing:"0.05em"}}>{lbl}</label>
+          <textarea value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} rows={3}
+            style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",fontSize:13,color:C.text,outline:"none",resize:"vertical",fontFamily:"system-ui,sans-serif"}}/>
+        </div>
+      ))}
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={save} disabled={saving} className="btn-primary" style={{padding:"10px 24px"}}>{saving?"Saving…":"Save note"}</button>
+        <button onClick={()=>{setShowForm(false);setEditNote(null);}} className="btn-ghost" style={{padding:"10px 16px"}}>Cancel</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+        <div>
+          <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:2}}>Clinical Notes</h2>
+          <p style={{color:C.muted,fontSize:13}}>SOAP-format session notes</p>
+        </div>
+        <button onClick={()=>setShowForm(true)} className="btn-primary" style={{padding:"8px 16px",fontSize:12}}>+ New note</button>
+      </div>
+      {notes.length === 0 ? (
+        <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:40}}>No notes yet. Create your first clinical note.</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {notes.map(n => (
+            <div key={n.id} className="glass" style={{borderRadius:14,padding:14}}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8}}>
+                <div>
+                  <div style={{color:C.text,fontWeight:700,fontSize:13}}>{n.patient_name || "Patient"}</div>
+                  <div style={{color:C.muted,fontSize:11}}>{n.session_date} · {n.therapist_name}</div>
+                </div>
+                <button onClick={()=>{setEditNote(n);setForm({patient:n.patient,session_date:n.session_date,subjective:n.subjective,objective:n.objective,assessment:n.assessment,plan:n.plan});}}
+                  style={{background:"rgba(124,58,237,0.1)",border:"none",borderRadius:8,padding:"4px 10px",color:"#A78BFA",fontSize:11,cursor:"pointer"}}>Edit</button>
+              </div>
+              {n.subjective && <div style={{fontSize:12,color:C.subtle,marginBottom:4}}><strong style={{color:C.muted}}>S:</strong> {n.subjective}</div>}
+              {n.plan && <div style={{fontSize:12,color:C.subtle}}><strong style={{color:C.muted}}>P:</strong> {n.plan}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Risk Flags Tab (Therapist) ──────────────────────────────────────────────────
+function RiskFlagsTab() {
+  const [flags, setFlags] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const f = await therapistAPI.getRiskFlags();
+    setFlags(Array.isArray(f) ? f : []);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  async function resolve(id) {
+    await therapistAPI.resolveRiskFlag(id);
+    load();
+  }
+
+  if (loading) return <div style={{display:"flex",justifyContent:"center",paddingTop:60}}><Spinner/></div>;
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Risk Dashboard</h2>
+      <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Patients who have triggered crisis keywords or high-risk flags</p>
+      {flags.length === 0 ? (
+        <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:40}}>
+          <div style={{fontSize:36,marginBottom:10}}>✅</div>
+          No active risk flags. All patients appear safe.
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {flags.map(f => (
+            <div key={f.id} style={{background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:14,padding:14}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}>
+                <span style={{fontSize:20}}>🚨</span>
+                <div style={{flex:1}}>
+                  <div style={{color:"#FCA5A5",fontWeight:700,fontSize:13}}>{f.user_name || f.user_email}</div>
+                  <div style={{color:C.muted,fontSize:11}}>{new Date(f.created_at).toLocaleString()}</div>
+                </div>
+                <span style={{fontSize:10,color:"#F87171",background:"rgba(239,68,68,0.1)",borderRadius:50,padding:"2px 8px",fontWeight:600}}>{f.flag_type}</span>
+              </div>
+              {f.message && <div style={{background:"rgba(0,0,0,0.2)",borderRadius:8,padding:"8px 10px",fontSize:12,color:C.subtle,marginBottom:10,fontStyle:"italic"}}>"{f.message}"</div>}
+              <button onClick={() => resolve(f.id)} style={{background:"rgba(45,212,191,0.1)",border:"1px solid rgba(45,212,191,0.25)",borderRadius:8,padding:"6px 14px",color:C.aqua,fontSize:12,cursor:"pointer",fontWeight:600}}>
+                Mark resolved
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── User Dashboard ─────────────────────────────────────────────────────────────
-function UserDashboard({ user, onSelectModule, onLogout }) {
-  const [tab, setTab] = useState("home");
+const SPECS = ['anxiety','trauma','grief','burnout','adhd','recovery','sleep','postpartum','social'];
+const SPEC_LABELS = {anxiety:'Anxiety',trauma:'Trauma',grief:'Grief',burnout:'Burnout',adhd:'ADHD',recovery:'Recovery',sleep:'Sleep',postpartum:'Postpartum',social:'Social'};
+
+function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home" }) {
+  const [tab, setTab] = useState(initialTab);
   const [search, setSearch] = useState("");
   const [therapists, setTherapists] = useState([]);
   const [connections, setConnections] = useState([]);
@@ -649,6 +1299,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
   const [requesting, setRequesting] = useState(null);
   const [reqMsg, setReqMsg] = useState("");
   const [loadingDir, setLoadingDir] = useState(false);
+  const [specFilter, setSpecFilter] = useState("");
 
   const filtered = MODULES.filter(m => m.label.toLowerCase().includes(search.toLowerCase()) || m.desc.toLowerCase().includes(search.toLowerCase()));
   const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
@@ -656,7 +1307,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
   useEffect(() => {
     if (tab === "therapists") {
       setLoadingDir(true);
-      Promise.all([therapistAPI.directory(), therapistAPI.listConnections()]).then(([dir, conns]) => {
+      Promise.all([therapistAPI.directory(specFilter), therapistAPI.listConnections()]).then(([dir, conns]) => {
         setTherapists(Array.isArray(dir) ? dir : []);
         setConnections(Array.isArray(conns) ? conns : []);
         setLoadingDir(false);
@@ -665,7 +1316,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
     if (tab === "messages") {
       therapistAPI.listConnections().then(data => setConnections(Array.isArray(data) ? data : []));
     }
-  }, [tab]);
+  }, [tab, specFilter]);
 
   async function sendRequest(therapistId) {
     const result = await therapistAPI.requestConnection(therapistId, reqMsg);
@@ -684,6 +1335,7 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
 
   const tabs = [
     {id:"home", label:"Modules"},
+    {id:"wellbeing", label:"Wellbeing"},
     {id:"therapists", label:"Find Therapist"},
     {id:"messages", label:"My Therapist"},
   ];
@@ -725,15 +1377,36 @@ function UserDashboard({ user, onSelectModule, onLogout }) {
         </div>
       )}
 
+      {/* ── Wellbeing tab ── */}
+      {tab === "wellbeing" && <WellbeingTab user={user}/>}
+
       {/* ── Find Therapist tab ── */}
       {tab === "therapists" && (
         <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
           <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Find a Therapist</h2>
-          <p style={{color:C.muted,fontSize:13,marginBottom:20}}>Connect with a licensed mental health professional</p>
+          <p style={{color:C.muted,fontSize:13,marginBottom:12}}>Connect with a licensed mental health professional</p>
+          {/* Specialization filter chips */}
+          <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:16,WebkitOverflowScrolling:"touch"}}>
+            <button onClick={() => setSpecFilter("")}
+              style={{flexShrink:0,borderRadius:50,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
+                background:specFilter===""?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
+                borderColor:specFilter===""?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)",
+                color:specFilter===""?"#A78BFA":C.muted}}>All</button>
+            {SPECS.map(s => (
+              <button key={s} onClick={() => setSpecFilter(s === specFilter ? "" : s)}
+                style={{flexShrink:0,borderRadius:50,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",border:"1px solid",
+                  background:specFilter===s?"rgba(124,58,237,0.2)":"rgba(255,255,255,0.04)",
+                  borderColor:specFilter===s?"rgba(124,58,237,0.5)":"rgba(255,255,255,0.1)",
+                  color:specFilter===s?"#A78BFA":C.muted}}>{SPEC_LABELS[s]}</button>
+            ))}
+          </div>
           {loadingDir ? (
             <div style={{display:"flex",justifyContent:"center",paddingTop:40}}><Spinner/></div>
           ) : therapists.length === 0 ? (
-            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:40}}>No therapists available right now.</div>
+            <div style={{textAlign:"center",color:C.muted,fontSize:14,paddingTop:40}}>
+              {specFilter ? `No therapists found for "${SPEC_LABELS[specFilter]}".` : "No therapists available right now."}
+              {specFilter && <div style={{marginTop:10}}><button onClick={() => setSpecFilter("")} style={{background:"none",border:"none",color:C.aqua,cursor:"pointer",fontSize:13}}>Clear filter</button></div>}
+            </div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {therapists.map(t => {
@@ -909,6 +1582,8 @@ function TherapistDashboard({ user, onLogout }) {
     {id:"patients", label:"Patients"},
     {id:"requests", label:`Requests${pending.length ? ` (${pending.length})` : ""}`},
     {id:"messages", label:"Messages"},
+    {id:"notes", label:"Notes"},
+    {id:"risk", label:"Risk"},
     {id:"profile", label:"My Profile"},
   ];
 
@@ -1047,6 +1722,9 @@ function TherapistDashboard({ user, onLogout }) {
         </div>
       )}
 
+      {!loading && tab === "notes" && <ClinicalNotesTab user={user}/>}
+      {!loading && tab === "risk" && <RiskFlagsTab/>}
+
       {!loading && tab === "profile" && profileForm && (
         <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
           <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>My Profile</h2>
@@ -1164,12 +1842,36 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [activeModule, setActiveModule] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [defaultUserTab, setDefaultUserTab] = useState("home");
+  const [showConsent, setShowConsent] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     if (authAPI.isLoggedIn()) {
-      authAPI.me().then(data => { if (data) { setUser(data); setScreen("home"); } setLoading(false); });
+      authAPI.me().then(data => {
+        if (data) {
+          setUser(data);
+          setScreen("home");
+          // Show consent once
+          if (!localStorage.getItem('mb_consent') && data.role !== 'therapist' && data.role !== 'admin') {
+            setShowConsent(true);
+          }
+        }
+        setLoading(false);
+      });
     } else { setLoading(false); }
   }, []);
+
+  function handleConsentAccept() {
+    localStorage.setItem('mb_consent', '1');
+    setShowConsent(false);
+    // Check if we should show onboarding (only for regular users)
+    if (user?.role !== 'therapist' && user?.role !== 'admin') {
+      wellbeingAPI.getAssessments().then(a => {
+        if (!Array.isArray(a) || a.length === 0) setShowOnboarding(true);
+      });
+    }
+  }
 
   function handleLogout() { authAPI.logout(); setUser(null); setScreen("login"); }
 
@@ -1184,7 +1886,11 @@ export default function App() {
   if (screen === "login")    return <LoginScreen    onLogin={u => { setUser(u); setScreen("home"); }} onGoRegister={() => setScreen("register")}/>;
 
   if (screen === "module" && activeModule) {
-    return <ChatModule mod={activeModule} user={user} onBack={() => { setActiveModule(null); setScreen("home"); }}/>;
+    return <ChatModule
+      mod={activeModule} user={user}
+      onBack={() => { setActiveModule(null); setScreen("home"); }}
+      onOpenTherapists={() => { setDefaultUserTab("therapists"); setActiveModule(null); setScreen("home"); }}
+    />;
   }
 
   if (screen === "home") {
@@ -1192,11 +1898,21 @@ export default function App() {
       return <TherapistDashboard user={user} onLogout={handleLogout}/>;
     }
     return (
-      <UserDashboard
-        user={user}
-        onSelectModule={mod => { setActiveModule(mod); setScreen("module"); }}
-        onLogout={handleLogout}
-      />
+      <>
+        {showConsent && <ConsentModal onAccept={handleConsentAccept}/>}
+        {!showConsent && showOnboarding && (
+          <OnboardingModal
+            onComplete={(score, severity) => { setShowOnboarding(false); }}
+            onSkip={() => setShowOnboarding(false)}
+          />
+        )}
+        <UserDashboard
+          user={user}
+          initialTab={defaultUserTab}
+          onSelectModule={mod => { setDefaultUserTab("home"); setActiveModule(mod); setScreen("module"); }}
+          onLogout={handleLogout}
+        />
+      </>
     );
   }
 

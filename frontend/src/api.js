@@ -261,4 +261,114 @@ export const therapistAPI = {
     })
     return res?.ok ? res.json() : null
   },
+
+  async getClinicalNotes(patientId = null) {
+    const q = patientId ? `?patient=${patientId}` : ''
+    const res = await authFetch(`/therapists/notes/${q}`)
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
+
+  async createClinicalNote(data) {
+    const res = await authFetch('/therapists/notes/', { method: 'POST', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async updateClinicalNote(id, data) {
+    const res = await authFetch(`/therapists/notes/${id}/`, { method: 'PATCH', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async getRiskFlags() {
+    const res = await authFetch('/therapists/risk-flags/')
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
+
+  async resolveRiskFlag(id) {
+    const res = await authFetch(`/therapists/risk-flags/${id}/resolve/`, { method: 'PATCH' })
+    return res?.ok
+  },
+
+  async getPatientOutcomes(patientId) {
+    const res = await authFetch(`/therapists/outcomes/${patientId}/`)
+    if (!res || !res.ok) return null
+    return res.json()
+  },
+
+  async getAppointments() {
+    const res = await authFetch('/therapists/appointments/')
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
+
+  async createAppointment(data) {
+    const res = await authFetch('/therapists/appointments/', { method: 'POST', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async updateAppointment(id, data) {
+    const res = await authFetch(`/therapists/appointments/${id}/`, { method: 'PATCH', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+}
+
+// ── Wellbeing / WHO features API ──────────────────────────────────────────────
+export const wellbeingAPI = {
+  async getMoods() {
+    const res = await authFetch('/chat/moods/')
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
+
+  async addMood(score, note = '') {
+    const res = await authFetch('/chat/moods/', {
+      method: 'POST',
+      body: JSON.stringify({ score, note }),
+    })
+    return res?.ok ? res.json() : null
+  },
+
+  async getSafetyPlan() {
+    const res = await authFetch('/chat/safety-plan/')
+    if (!res || !res.ok) return null
+    return res.json()
+  },
+
+  async saveSafetyPlan(data) {
+    const res = await authFetch('/chat/safety-plan/', { method: 'PUT', body: JSON.stringify(data) })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async getAssessments() {
+    const res = await authFetch('/chat/assessments/')
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
+
+  async createAssessment(type, responses, total_score, severity) {
+    const res = await authFetch('/chat/assessments/', {
+      method: 'POST',
+      body: JSON.stringify({ type, responses, total_score, severity }),
+    })
+    return { ok: res?.ok, data: res?.ok ? await res.json() : null }
+  },
+
+  async getOutcomes() {
+    const res = await authFetch('/chat/outcomes/')
+    if (!res || !res.ok) return null
+    return res.json()
+  },
+
+  async getSessions() {
+    const res = await authFetch('/chat/sessions/')
+    if (!res || !res.ok) return []
+    const data = await res.json()
+    return data.results || data
+  },
 }

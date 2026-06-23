@@ -13,4 +13,7 @@ urlpatterns = [
     path('moods/', views.MoodEntryListCreateView.as_view(), name='mood_list'),
     path('crisis/', views.CrisisFlagListView.as_view(), name='crisis_list'),
     path('crisis/<uuid:pk>/resolve/', views.CrisisFlagResolveView.as_view(), name='crisis_resolve'),
+    path('safety-plan/', views.SafetyPlanView.as_view(), name='safety_plan'),
+    path('assessments/', views.PHQAssessmentListCreateView.as_view(), name='assessments'),
+    path('outcomes/', views.UserOutcomesView.as_view(), name='outcomes'),
 ]

@@ -187,3 +187,49 @@ class DirectMessage(models.Model):
 
     def __str__(self):
         return f'{self.sender.email}: {self.content[:40]}'
+
+
+class ClinicalNote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    therapist = models.ForeignKey(TherapistProfile, on_delete=models.CASCADE, related_name='clinical_notes')
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='clinical_notes')
+    session_date = models.DateField()
+    subjective = models.TextField(blank=True)
+    objective = models.TextField(blank=True)
+    assessment = models.TextField(blank=True)
+    plan = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'clinical_notes'
+        ordering = ['-session_date']
+
+
+class Appointment(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        CONFIRMED = 'confirmed', 'Confirmed'
+        CANCELLED = 'cancelled', 'Cancelled'
+        COMPLETED = 'completed', 'Completed'
+
+    class AppType(models.TextChoices):
+        VIDEO = 'video', 'Video Call'
+        PHONE = 'phone', 'Phone Call'
+        INAPP = 'inapp', 'In-App Chat'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    therapist = models.ForeignKey(TherapistProfile, on_delete=models.CASCADE, related_name='appointments')
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='appointments')
+    appointment_type = models.CharField(max_length=20, choices=AppType.choices, default=AppType.INAPP)
+    scheduled_at = models.DateTimeField()
+    duration_minutes = models.PositiveSmallIntegerField(default=50)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    patient_notes = models.TextField(blank=True)
+    therapist_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'appointments'
+        ordering = ['scheduled_at']

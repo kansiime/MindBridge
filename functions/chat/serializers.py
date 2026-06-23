@@ -66,3 +66,28 @@ class CrisisFlagSerializer(serializers.ModelSerializer):
         model = CrisisFlag
         fields = ['id', 'session', 'severity', 'trigger_text', 'resolved', 'resolved_at', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+from .models import SafetyPlan, PHQAssessment
+
+
+class SafetyPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SafetyPlan
+        fields = [
+            'id', 'warning_signs', 'coping_strategies', 'reasons_to_live',
+            'support_contacts', 'professional_contacts', 'crisis_number',
+            'environment_safety', 'updated_at', 'created_at',
+        ]
+        read_only_fields = ['id', 'updated_at', 'created_at']
+
+
+class PHQAssessmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PHQAssessment
+        fields = ['id', 'type', 'responses', 'total_score', 'severity', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
