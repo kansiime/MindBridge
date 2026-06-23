@@ -47,4 +47,6 @@ urlpatterns = [
     path('admin/stats/', views.AdminStatsView.as_view(), name='admin_stats'),
     path('therapist/patients/', views.TherapistPatientListView.as_view(), name='therapist_patients'),
     path('create-admin/', create_admin, name='create_admin'),
+    path('export/', views.DataExportView.as_view(), name='data_export'),
+    path('delete-account/', views.AccountDeleteView.as_view(), name='delete_account'),
 ]

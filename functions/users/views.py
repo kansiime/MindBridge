@@ -151,3 +151,84 @@ class TherapistPatientListView(generics.ListCreateAPIView):
             .filter(therapist=self.request.user)
             .select_related('patient')
         )
+
+
+class DataExportView(APIView):
+    """GET /api/v1/auth/export/ — GDPR data export"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from chat.models import ChatSession, MoodEntry, PHQAssessment, SafetyPlan
+        user = request.user
+
+        sessions = list(
+            ChatSession.objects.filter(user=user)
+            .values('id', 'module_id', 'summary', 'mood_score', 'crisis_flag', 'created_at', 'ended_at')
+        )
+        moods = list(
+            MoodEntry.objects.filter(user=user)
+            .values('score', 'note', 'created_at')
+        )
+        assessments = list(
+            PHQAssessment.objects.filter(user=user)
+            .values('type', 'responses', 'total_score', 'severity', 'created_at')
+        )
+        try:
+            sp = SafetyPlan.objects.get(user=user)
+            safety_plan = {
+                'warning_signs': sp.warning_signs,
+                'coping_strategies': sp.coping_strategies,
+                'reasons_to_live': sp.reasons_to_live,
+                'support_contacts': sp.support_contacts,
+                'professional_contacts': sp.professional_contacts,
+                'crisis_number': sp.crisis_number,
+                'environment_safety': sp.environment_safety,
+                'updated_at': str(sp.updated_at),
+            }
+        except SafetyPlan.DoesNotExist:
+            safety_plan = None
+
+        # Make datetimes JSON-serializable
+        def serialize(obj):
+            import datetime
+            if isinstance(obj, (datetime.datetime, datetime.date)):
+                return obj.isoformat()
+            return str(obj)
+
+        import json
+        export = {
+            'user': {
+                'email': user.email,
+                'name': user.name,
+                'role': user.role,
+                'timezone': user.timezone,
+                'created_at': str(user.created_at),
+            },
+            'sessions': sessions,
+            'moods': moods,
+            'assessments': assessments,
+            'safety_plan': safety_plan,
+            'exported_at': str(timezone.now()),
+        }
+        from django.http import HttpResponse
+        content = json.dumps(export, default=serialize, indent=2)
+        response = HttpResponse(content, content_type='application/json')
+        response['Content-Disposition'] = 'attachment; filename="mindbridge-export.json"'
+        return response
+
+
+class AccountDeleteView(APIView):
+    """DELETE /api/v1/auth/delete-account/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        # Soft delete: anonymise and deactivate
+        import uuid
+        user.is_active = False
+        user.email = f'deleted_{uuid.uuid4().hex[:8]}@deleted.invalid'
+        user.name = 'Deleted User'
+        user.save()
+        return Response({'detail': 'Account deleted.'}, status=204)

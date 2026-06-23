@@ -562,3 +562,29 @@ class AppointmentUpdateView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+# ── Audit Log ──────────────────────────────────────────────────────────────────
+
+class AuditLogView(APIView):
+    """GET /api/v1/therapists/audit-log/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import AuditLog
+        if request.user.role not in ('therapist', 'admin'):
+            return Response({'error': 'Forbidden'}, status=403)
+        logs = AuditLog.objects.filter(therapist=request.user).select_related('patient')[:100]
+        data = [
+            {
+                'id': str(log.id),
+                'action': log.get_action_display(),
+                'action_code': log.action,
+                'patient_name': (log.patient.name or log.patient.email) if log.patient else None,
+                'detail': log.detail,
+                'created_at': log.created_at.isoformat(),
+            }
+            for log in logs
+        ]
+        return Response(data)

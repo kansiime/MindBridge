@@ -30,4 +30,7 @@ urlpatterns = [
     # Admin
     path('admin/applications/', views.AdminApplicationListView.as_view(), name='admin_applications'),
     path('admin/applications/<uuid:pk>/review/', views.AdminApplicationReviewView.as_view(), name='admin_review'),
+
+    # Audit log
+    path('audit-log/', views.AuditLogView.as_view(), name='audit_log'),
 ]

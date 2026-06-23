@@ -1,5 +1,52 @@
-import { authAPI, chatAPI, therapistAPI, wellbeingAPI } from "./api";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { authAPI, chatAPI, therapistAPI, wellbeingAPI, accountAPI } from "./api";
+import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
+
+// ── i18n ──────────────────────────────────────────────────────────────────────
+const LangCtx = createContext('en');
+const useLang = () => useContext(LangCtx);
+
+const TR = {
+  en: {
+    appTagline: "Mental Wellness",
+    signIn: "Sign in to continue your wellness journey",
+    email: "EMAIL", password: "PASSWORD",
+    signInBtn: "Sign in →", createAccount: "Create account →",
+    noAccount: "No account?", createFree: "Create one free",
+    haveAccount: "Already have an account?", signInLink: "Sign in",
+    greeting: n => `Good to see you, ${n}`,
+    chooseModule: "Choose a module to start your session",
+    allModules: n => `All modules · ${n}`,
+    search: "Search modules…",
+    tabModules: "Modules", tabWellbeing: "Wellbeing", tabTherapists: "Find Therapist",
+    tabMyTherapist: "My Therapist", tabAccount: "Account",
+    crisisMsg: "In crisis? Call",
+    findTherapist: "Find a Therapist",
+    findTherapistSub: "Connect with a licensed mental health professional",
+    myTherapist: "My Therapist", myTherapistSub: "Your active connections",
+    signOut: "Sign out", hi: "Hi,",
+    wellbeing: "Your Wellbeing", wellbeingSub: "Track your mood, safety plan, and session history",
+  },
+  sw: {
+    appTagline: "Afya ya Akili",
+    signIn: "Ingia kuendelea na safari yako ya ustawi",
+    email: "BARUA PEPE", password: "NENOSIRI",
+    signInBtn: "Ingia →", createAccount: "Tengeneza akaunti →",
+    noAccount: "Huna akaunti?", createFree: "Tengeneza bure",
+    haveAccount: "Una akaunti tayari?", signInLink: "Ingia",
+    greeting: n => `Karibu tena, ${n}`,
+    chooseModule: "Chagua moduli kuanza kikao chako",
+    allModules: n => `Moduli zote · ${n}`,
+    search: "Tafuta moduli…",
+    tabModules: "Moduli", tabWellbeing: "Ustawi", tabTherapists: "Tafuta Daktari",
+    tabMyTherapist: "Daktari Wangu", tabAccount: "Akaunti",
+    crisisMsg: "Uko katika msongo? Piga simu",
+    findTherapist: "Tafuta Daktari",
+    findTherapistSub: "Unganisha na mtaalamu wa afya ya akili aliyeidhinishwa",
+    myTherapist: "Daktari Wangu", myTherapistSub: "Miunganisho yako inayotumiwa",
+    signOut: "Toka", hi: "Habari,",
+    wellbeing: "Ustawi Wako", wellbeingSub: "Fuatilia hali yako ya kihisia na mpango wa usalama",
+  },
+};
 
 const C = {
   bg:"#0A0818", surface:"rgba(255,255,255,0.05)", border:"rgba(255,255,255,0.08)",
@@ -24,6 +71,9 @@ const CSS = `
   .btn-ghost{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px 18px;font-size:13px;color:#94A3B8;cursor:pointer;}
   .tab{background:none;border:none;color:#64748B;font-size:13px;font-weight:600;cursor:pointer;padding:8px 16px;border-radius:50px;}
   .tab.active{background:rgba(124,58,237,0.15);color:#A78BFA;}
+  *:focus-visible{outline:2px solid #7C3AED;outline-offset:2px;}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important;}}
+  @media (prefers-color-scheme:light){:root{--bg:#f8f7ff;}}
 `;
 
 const MODULES = [
@@ -92,19 +142,26 @@ function Field({ label, type, value, onChange, placeholder, required = true }) {
   );
 }
 
-function NavBar({ user, onLogout, tab, onTab, tabs }) {
+function NavBar({ user, onLogout, tab, onTab, tabs, lang, onLangToggle }) {
+  const t = TR[lang] || TR.en;
   const firstName = user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
   return (
-    <div style={{padding:"14px 20px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0,background:C.bg}}>
+    <div style={{padding:"14px 20px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${C.border}`,flexShrink:0,background:C.bg}} role="navigation" aria-label="Main navigation">
       <Orb colors={["#7C3AED","#4F46E5","#2DD4BF"]} size={32}/>
       <span style={{color:C.text,fontWeight:800,fontSize:17,fontFamily:"Georgia,serif"}}>Mind<span style={{color:C.aqua}}>Bridge</span></span>
-      <div style={{flex:1,display:"flex",gap:4,justifyContent:"center"}}>
-        {tabs.map(t => (
-          <button key={t.id} className={`tab${tab===t.id?" active":""}`} onClick={() => onTab(t.id)}>{t.label}</button>
+      <div style={{flex:1,display:"flex",gap:4,justifyContent:"center",overflowX:"auto"}}>
+        {tabs.map(tb => (
+          <button key={tb.id} className={`tab${tab===tb.id?" active":""}`} onClick={() => onTab(tb.id)} aria-current={tab===tb.id?"page":undefined}>{tb.label}</button>
         ))}
       </div>
-      <span style={{color:C.muted,fontSize:12}}>Hi, {firstName}</span>
-      <button onClick={onLogout} className="btn-ghost" style={{padding:"5px 12px",fontSize:12}}>Sign out</button>
+      <span style={{color:C.muted,fontSize:12}}>{t.hi} {firstName}</span>
+      {onLangToggle && (
+        <button onClick={onLangToggle} aria-label={`Switch to ${lang==='en'?'Swahili':'English'}`}
+          style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 9px",fontSize:11,color:C.muted,cursor:"pointer",fontWeight:700,flexShrink:0}}>
+          {lang==='en'?'SW':'EN'}
+        </button>
+      )}
+      <button onClick={onLogout} className="btn-ghost" style={{padding:"5px 12px",fontSize:12}} aria-label={t.signOut}>{t.signOut}</button>
     </div>
   );
 }
@@ -1286,11 +1343,384 @@ function RiskFlagsTab() {
   );
 }
 
+// ── GAD-7 Anxiety Screen ──────────────────────────────────────────────────────
+const GAD7_QUESTIONS = [
+  "Feeling nervous, anxious, or on edge",
+  "Not being able to stop or control worrying",
+  "Worrying too much about different things",
+  "Trouble relaxing",
+  "Being so restless that it is hard to sit still",
+  "Becoming easily annoyed or irritable",
+  "Feeling afraid as if something awful might happen",
+];
+const GAD7_OPTIONS = ["Not at all","Several days","More than half the days","Nearly every day"];
+
+function GAD7Modal({ onComplete, onSkip }) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  if (step === 0) return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} role="dialog" aria-modal="true" aria-labelledby="gad7-title">
+      <div style={{background:"#13102A",borderRadius:20,padding:28,maxWidth:420,width:"100%",animation:"slideUp .3s ease",textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>⚡</div>
+        <h2 id="gad7-title" style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:8}}>Anxiety check-in (GAD-7)</h2>
+        <p style={{color:C.muted,fontSize:13,lineHeight:1.6,marginBottom:20}}>
+          The GAD-7 is the gold-standard 7-question anxiety screen used by clinicians worldwide. Takes under 90 seconds.
+        </p>
+        <div style={{display:"flex",gap:10,flexDirection:"column"}}>
+          <button className="btn-primary" style={{padding:"11px"}} onClick={() => setStep(1)}>Start →</button>
+          <button onClick={onSkip} style={{background:"none",border:"none",color:C.muted,fontSize:13,cursor:"pointer",padding:"6px"}}>Skip for now</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (step >= 1 && step <= 7) {
+    const q = GAD7_QUESTIONS[step-1];
+    const progress = Math.round((step/7)*100);
+    return (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} role="dialog" aria-modal="true">
+        <div style={{background:"#13102A",borderRadius:20,padding:28,maxWidth:420,width:"100%",animation:"slideUp .3s ease"}}>
+          <div style={{marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{color:C.muted,fontSize:12}}>Question {step} of 7</span>
+              <span style={{color:C.muted,fontSize:12}}>{progress}%</span>
+            </div>
+            <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2}}>
+              <div style={{height:4,background:`linear-gradient(90deg,#F97316,#EF4444)`,borderRadius:2,width:`${progress}%`,transition:"width .3s"}}/>
+            </div>
+          </div>
+          <p style={{color:C.subtle,fontSize:12,marginBottom:8,fontWeight:600}}>Over the last 2 weeks, how often have you been bothered by…</p>
+          <h3 style={{color:C.text,fontSize:15,fontWeight:700,marginBottom:20,lineHeight:1.5}}>{q}</h3>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {GAD7_OPTIONS.map((opt, i) => (
+              <button key={i} onClick={() => { setAnswers(a => ({...a,[step]:i})); setTimeout(() => setStep(s => s < 7 ? s+1 : 8), 120); }}
+                style={{background:answers[step]===i?"rgba(249,115,22,0.2)":"rgba(255,255,255,0.04)",border:`1px solid ${answers[step]===i?"rgba(249,115,22,0.5)":"rgba(255,255,255,0.1)"}`,borderRadius:12,padding:"12px 16px",color:answers[step]===i?"#FB923C":C.subtle,fontSize:14,cursor:"pointer",textAlign:"left",fontWeight:answers[step]===i?700:400}}>
+                <span style={{color:C.muted,fontSize:12,marginRight:8}}>{i}</span>{opt}
+              </button>
+            ))}
+          </div>
+          {step > 1 && <button onClick={() => setStep(s => s-1)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",marginTop:12}}>← Back</button>}
+        </div>
+      </div>
+    );
+  }
+
+  const total = Object.values(answers).reduce((a,b)=>a+b,0);
+  const severity = total <= 4 ? 'Minimal' : total <= 9 ? 'Mild' : total <= 14 ? 'Moderate' : 'Severe';
+  const color = total <= 4 ? C.aqua : total <= 9 ? '#4ADE80' : total <= 14 ? '#FCD34D' : '#EF4444';
+
+  async function finish() {
+    setSaving(true);
+    const responses = {};
+    for (let i=1;i<=7;i++) responses[`q${i}`] = answers[i]??0;
+    await wellbeingAPI.createAssessment('gad7', responses, total, severity.toLowerCase());
+    setSaving(false);
+    onComplete(total, severity);
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} role="dialog" aria-modal="true">
+      <div style={{background:"#13102A",borderRadius:20,padding:28,maxWidth:420,width:"100%",textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>✅</div>
+        <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:8}}>GAD-7 complete</h2>
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:14,padding:"16px",marginBottom:20}}>
+          <div style={{fontSize:36,fontWeight:800,color,marginBottom:4}}>{total}/21</div>
+          <div style={{color,fontSize:16,fontWeight:700}}>{severity} anxiety</div>
+          {total >= 10 && <p style={{color:C.muted,fontSize:12,marginTop:8}}>Consider speaking to a therapist. Your results will be shared with your connected therapist if you have one.</p>}
+        </div>
+        <button className="btn-primary" style={{width:"100%",padding:"11px"}} disabled={saving} onClick={finish}>
+          {saving ? "Saving…" : "Continue →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Crisis Escalation Chain ───────────────────────────────────────────────────
+function CrisisChainModal({ onClose, connectedTherapist }) {
+  const [step, setStep] = useState(1); // 1=safety plan, 2=contact therapist, 3=emergency
+  const [notified, setNotified] = useState(false);
+
+  async function notifyTherapist() {
+    if (connectedTherapist) {
+      await therapistAPI.sendDirectMessage(connectedTherapist.id,
+        "🚨 I may be in crisis. I am reaching out for support right now.");
+    }
+    setNotified(true);
+    setTimeout(() => setStep(3), 1500);
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} role="dialog" aria-modal="true" aria-labelledby="crisis-title">
+      <div style={{background:"#1a0a0a",border:"1px solid rgba(239,68,68,0.4)",borderRadius:20,padding:28,maxWidth:440,width:"100%",animation:"slideUp .3s ease"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+          <span style={{fontSize:28}}>🆘</span>
+          <h2 id="crisis-title" style={{color:"#FCA5A5",fontSize:18,fontWeight:800,fontFamily:"Georgia,serif"}}>
+            {step===1?"Your safety plan":step===2?"Contact your therapist":"Emergency support"}
+          </h2>
+        </div>
+
+        {/* Progress steps */}
+        <div style={{display:"flex",gap:8,marginBottom:24}}>
+          {[1,2,3].map(s => (
+            <div key={s} style={{flex:1,height:3,borderRadius:2,background:step>=s?"#EF4444":"rgba(255,255,255,0.1)"}}/>
+          ))}
+        </div>
+
+        {step === 1 && (
+          <div>
+            <p style={{color:C.muted,fontSize:13,lineHeight:1.7,marginBottom:16}}>
+              Before anything else — remember your safety plan. You made it for moments like this.
+            </p>
+            {[
+              "🛑 Notice the warning sign you're experiencing",
+              "💭 Use a coping strategy from your list",
+              "💛 Think of one reason to live",
+              "📱 Call someone on your support contacts",
+            ].map((s, i) => (
+              <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:10}}>
+                <span style={{fontSize:16,flexShrink:0}}></span>
+                <span style={{color:C.subtle,fontSize:13}}>{s}</span>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:20}}>
+              <button className="btn-primary" style={{flex:1,padding:"10px"}} onClick={() => setStep(2)}>Next step →</button>
+              <button onClick={onClose} className="btn-ghost" style={{padding:"10px 14px",fontSize:12}}>I'm okay</button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div>
+            <p style={{color:C.muted,fontSize:13,lineHeight:1.7,marginBottom:16}}>
+              {connectedTherapist
+                ? `Send an alert to your therapist (${connectedTherapist.therapist?.full_name || "your therapist"}) right now.`
+                : "You don't have a connected therapist yet. Connect with one in the Therapists tab."}
+            </p>
+            {notified && (
+              <div style={{background:"rgba(45,212,191,0.08)",border:"1px solid rgba(45,212,191,0.25)",borderRadius:12,padding:"10px 14px",marginBottom:16,color:C.aqua,fontSize:13}}>
+                ✓ Alert sent. Your therapist has been notified.
+              </div>
+            )}
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              {connectedTherapist && !notified && (
+                <button className="btn-primary" style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#EF4444,#B91C1C)"}} onClick={notifyTherapist}>
+                  🚨 Alert therapist now
+                </button>
+              )}
+              <button onClick={() => setStep(3)} className="btn-ghost" style={{padding:"10px 14px",fontSize:12}}>
+                {notified ? "Continue →" : "Skip to emergency"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div>
+            <p style={{color:C.muted,fontSize:13,lineHeight:1.7,marginBottom:16}}>
+              You are not alone. Trained counsellors are available right now, free of charge.
+            </p>
+            {[
+              {name:"Uganda Crisis Line", number:"+256787671827", color:"#EF4444"},
+              {name:"International Association for Suicide Prevention", number:"www.iasp.info", color:C.violet},
+              {name:"Crisis Text Line (Global)", number:"Text HOME to 741741", color:C.aqua},
+            ].map(r => (
+              <div key={r.name} style={{background:"rgba(255,255,255,0.04)",border:`1px solid rgba(255,255,255,0.08)`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+                <div style={{color:C.text,fontWeight:700,fontSize:13}}>{r.name}</div>
+                <div style={{color:r.color,fontSize:14,fontWeight:700,marginTop:2}}>{r.number}</div>
+              </div>
+            ))}
+            <button onClick={onClose} className="btn-ghost" style={{width:"100%",padding:"10px",marginTop:8}}>
+              Close — I'm reaching out now
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Account Settings Tab ──────────────────────────────────────────────────────
+function AccountSettingsTab({ user, onLogout }) {
+  const [exporting, setExporting] = useState(false);
+  const [exportDone, setExportDone] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [oldPwd, setOldPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [pwdMsg, setPwdMsg] = useState("");
+  const [savingPwd, setSavingPwd] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(Notification?.permission || 'default');
+
+  async function exportData() {
+    setExporting(true);
+    await accountAPI.exportData();
+    setExporting(false);
+    setExportDone(true);
+    setTimeout(() => setExportDone(false), 4000);
+  }
+
+  async function deleteAccount() {
+    setDeleting(true);
+    const ok = await accountAPI.deleteAccount();
+    if (ok) { authAPI.logout(); onLogout(); }
+    setDeleting(false);
+  }
+
+  async function changePassword(e) {
+    e.preventDefault();
+    setSavingPwd(true); setPwdMsg("");
+    const result = await accountAPI.changePassword(oldPwd, newPwd);
+    setPwdMsg(result.ok ? "Password updated ✓" : "Failed — check your current password.");
+    setSavingPwd(false);
+    if (result.ok) { setOldPwd(""); setNewPwd(""); }
+    setTimeout(() => setPwdMsg(""), 4000);
+  }
+
+  async function requestNotifications() {
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+  }
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 80px"}}>
+      <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Account Settings</h2>
+      <p style={{color:C.muted,fontSize:13,marginBottom:24}}>Manage your data and preferences</p>
+
+      {/* Profile info */}
+      <div className="glass" style={{borderRadius:16,padding:16,marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${C.violet},${C.aqua})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,color:"#fff"}}>
+            {(user?.name?.[0]||user?.email?.[0]||"?").toUpperCase()}
+          </div>
+          <div>
+            <div style={{color:C.text,fontWeight:700,fontSize:15}}>{user?.name || "—"}</div>
+            <div style={{color:C.muted,fontSize:12}}>{user?.email}</div>
+            <div style={{color:C.muted,fontSize:11,marginTop:2}}>Joined {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "—"}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="glass" style={{borderRadius:16,padding:16,marginBottom:16}}>
+        <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:4}}>Push Notifications</div>
+        <div style={{color:C.muted,fontSize:12,marginBottom:12}}>Get notified when your therapist sends a message or an appointment is coming up.</div>
+        {notifPermission === 'granted' ? (
+          <span style={{color:C.aqua,fontSize:13,fontWeight:600}}>✓ Notifications enabled</span>
+        ) : notifPermission === 'denied' ? (
+          <span style={{color:"#F87171",fontSize:12}}>Notifications blocked by browser. Enable in site settings.</span>
+        ) : (
+          <button onClick={requestNotifications} className="btn-primary" style={{padding:"8px 18px",fontSize:13}}>Enable notifications</button>
+        )}
+      </div>
+
+      {/* Change password */}
+      <div className="glass" style={{borderRadius:16,padding:16,marginBottom:16}}>
+        <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:12}}>Change Password</div>
+        <form onSubmit={changePassword} style={{display:"flex",flexDirection:"column",gap:10}}>
+          <input type="password" value={oldPwd} onChange={e=>setOldPwd(e.target.value)} placeholder="Current password" required
+            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}} aria-label="Current password"/>
+          <input type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="New password (min 8 chars)" minLength={8} required
+            style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",fontSize:13,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}} aria-label="New password"/>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <button type="submit" disabled={savingPwd} className="btn-primary" style={{padding:"8px 18px",fontSize:13}}>{savingPwd?"Saving…":"Update"}</button>
+            {pwdMsg && <span style={{color:pwdMsg.includes("✓")?C.aqua:"#F87171",fontSize:12}}>{pwdMsg}</span>}
+          </div>
+        </form>
+      </div>
+
+      {/* GDPR data export */}
+      <div className="glass" style={{borderRadius:16,padding:16,marginBottom:16}}>
+        <div style={{color:C.text,fontWeight:700,fontSize:14,marginBottom:4}}>Export My Data</div>
+        <p style={{color:C.muted,fontSize:12,lineHeight:1.6,marginBottom:12}}>
+          Download a complete copy of all your data — sessions, moods, assessments, safety plan — as a JSON file. Your right under GDPR and Uganda's Data Protection Act 2019.
+        </p>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={exportData} disabled={exporting} className="btn-primary" style={{padding:"8px 18px",fontSize:13}}>
+            {exporting ? "Preparing…" : "⬇ Download my data"}
+          </button>
+          {exportDone && <span style={{color:C.aqua,fontSize:12,fontWeight:600}}>Download started ✓</span>}
+        </div>
+      </div>
+
+      {/* Account deletion */}
+      <div style={{background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:16,padding:16}}>
+        <div style={{color:"#FCA5A5",fontWeight:700,fontSize:14,marginBottom:4}}>Delete Account</div>
+        <p style={{color:C.muted,fontSize:12,lineHeight:1.6,marginBottom:12}}>
+          Permanently anonymises your account and all personal data. This action cannot be undone.
+        </p>
+        {!deleteConfirm ? (
+          <button onClick={() => setDeleteConfirm(true)} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,padding:"8px 18px",color:"#F87171",fontSize:13,cursor:"pointer",fontWeight:600}}>
+            Delete my account
+          </button>
+        ) : (
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={deleteAccount} disabled={deleting}
+              style={{background:"#EF4444",border:"none",borderRadius:10,padding:"8px 18px",color:"#fff",fontSize:13,cursor:"pointer",fontWeight:700}}>
+              {deleting?"Deleting…":"Yes, delete permanently"}
+            </button>
+            <button onClick={() => setDeleteConfirm(false)} className="btn-ghost" style={{padding:"8px 14px",fontSize:13}}>Cancel</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Audit Log Tab (Therapist) ──────────────────────────────────────────────────
+function AuditLogTab() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    accountAPI.getAuditLog().then(data => {
+      setLogs(Array.isArray(data) ? data : []);
+      setLoading(false);
+    });
+  }, []);
+
+  const ACTION_ICONS = {
+    view_patient:'👤', view_session:'💬', view_moods:'📊',
+    create_note:'📝', update_note:'✏️', resolve_flag:'✅', view_outcomes:'📈',
+  };
+
+  if (loading) return <div style={{display:"flex",justifyContent:"center",paddingTop:60}}><Spinner/></div>;
+
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
+      <h2 style={{color:C.text,fontSize:18,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Audit Log</h2>
+      <p style={{color:C.muted,fontSize:13,marginBottom:20}}>A record of all your data access actions — required by clinical governance standards</p>
+      {logs.length === 0 ? (
+        <div style={{textAlign:"center",color:C.muted,fontSize:13,paddingTop:30}}>No audit entries yet.</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {logs.map(log => (
+            <div key={log.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:18,flexShrink:0}}>{ACTION_ICONS[log.action_code]||'🔍'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:C.text,fontSize:13,fontWeight:600}}>{log.action}</div>
+                {log.patient_name && <div style={{color:C.muted,fontSize:11}}>Patient: {log.patient_name}</div>}
+                {log.detail && <div style={{color:C.muted,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.detail}</div>}
+              </div>
+              <div style={{color:C.muted,fontSize:10,flexShrink:0,textAlign:"right"}}>
+                {new Date(log.created_at).toLocaleString([],{dateStyle:"short",timeStyle:"short"})}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── User Dashboard ─────────────────────────────────────────────────────────────
 const SPECS = ['anxiety','trauma','grief','burnout','adhd','recovery','sleep','postpartum','social'];
 const SPEC_LABELS = {anxiety:'Anxiety',trauma:'Trauma',grief:'Grief',burnout:'Burnout',adhd:'ADHD',recovery:'Recovery',sleep:'Sleep',postpartum:'Postpartum',social:'Social'};
 
-function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home" }) {
+function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home", lang = "en", onLangToggle }) {
   const [tab, setTab] = useState(initialTab);
   const [search, setSearch] = useState("");
   const [therapists, setTherapists] = useState([]);
@@ -1333,31 +1763,33 @@ function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home" }) 
     return <DirectChat connection={activeConnection} currentUser={user} onBack={() => { setActiveConnection(null); setTab("messages"); }}/>;
   }
 
+  const t = TR[lang] || TR.en;
   const tabs = [
-    {id:"home", label:"Modules"},
-    {id:"wellbeing", label:"Wellbeing"},
-    {id:"therapists", label:"Find Therapist"},
-    {id:"messages", label:"My Therapist"},
+    {id:"home", label:t.tabModules},
+    {id:"wellbeing", label:t.tabWellbeing},
+    {id:"therapists", label:t.tabTherapists},
+    {id:"messages", label:t.tabMyTherapist},
+    {id:"account", label:t.tabAccount},
   ];
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,sans-serif",display:"flex",flexDirection:"column"}}>
       <style>{CSS}</style>
-      <NavBar user={user} onLogout={onLogout} tab={tab} onTab={setTab} tabs={tabs}/>
+      <NavBar user={user} onLogout={onLogout} tab={tab} onTab={setTab} tabs={tabs} lang={lang} onLangToggle={onLangToggle}/>
 
       {/* ── Modules tab ── */}
       {tab === "home" && (
         <div style={{flex:1,overflowY:"auto",padding:"20px 20px 80px"}}>
           <div style={{marginBottom:16}}>
-            <h2 style={{color:C.text,fontSize:20,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>Good to see you, {firstName}</h2>
-            <p style={{color:C.muted,fontSize:13}}>Choose a module to start your session</p>
+            <h2 style={{color:C.text,fontSize:20,fontWeight:800,fontFamily:"Georgia,serif",marginBottom:4}}>{t.greeting(firstName)}</h2>
+            <p style={{color:C.muted,fontSize:13}}>{t.chooseModule}</p>
           </div>
           <div style={{position:"relative",marginBottom:16}}>
-            <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:14,color:C.muted}}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…"
+            <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:14,color:C.muted}} aria-hidden="true">🔍</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.search} aria-label={t.search}
               style={{width:"100%",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:50,padding:"10px 16px 10px 36px",fontSize:14,color:C.text,outline:"none",fontFamily:"system-ui,sans-serif"}}/>
           </div>
-          <div style={{fontSize:11,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>All modules · {filtered.length}</div>
+          <div style={{fontSize:11,color:C.muted,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:12}}>{t.allModules(filtered.length)}</div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {filtered.map(mod => (
               <button key={mod.id} className="mod-card" onClick={() => onSelectModule(mod)}
@@ -1378,7 +1810,10 @@ function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home" }) 
       )}
 
       {/* ── Wellbeing tab ── */}
-      {tab === "wellbeing" && <WellbeingTab user={user}/>}
+      {tab === "wellbeing" && <WellbeingTab user={user} lang={lang}/>}
+
+      {/* ── Account tab ── */}
+      {tab === "account" && <AccountSettingsTab user={user} onLogout={onLogout}/>}
 
       {/* ── Find Therapist tab ── */}
       {tab === "therapists" && (
@@ -1511,9 +1946,9 @@ function UserDashboard({ user, onSelectModule, onLogout, initialTab = "home" }) 
       )}
 
       {/* Crisis footer */}
-      <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"10px 20px",background:"rgba(10,8,24,0.95)",backdropFilter:"blur(12px)",borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,zIndex:50}}>
-        <span>🚨</span>
-        <span style={{color:C.muted,fontSize:12,flex:1}}>In crisis? Call <strong style={{color:C.subtle}}>+256787671827</strong> — free, confidential, 24/7</span>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"10px 20px",background:"rgba(10,8,24,0.95)",backdropFilter:"blur(12px)",borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,zIndex:50}} role="complementary" aria-label="Crisis support">
+        <span aria-hidden="true">🚨</span>
+        <span style={{color:C.muted,fontSize:12,flex:1}}>{t.crisisMsg} <strong style={{color:C.subtle}}>+256787671827</strong> — free, confidential, 24/7</span>
       </div>
     </div>
   );
@@ -1584,6 +2019,7 @@ function TherapistDashboard({ user, onLogout }) {
     {id:"messages", label:"Messages"},
     {id:"notes", label:"Notes"},
     {id:"risk", label:"Risk"},
+    {id:"audit", label:"Audit"},
     {id:"profile", label:"My Profile"},
   ];
 
@@ -1724,6 +2160,7 @@ function TherapistDashboard({ user, onLogout }) {
 
       {!loading && tab === "notes" && <ClinicalNotesTab user={user}/>}
       {!loading && tab === "risk" && <RiskFlagsTab/>}
+      {!loading && tab === "audit" && <AuditLogTab/>}
 
       {!loading && tab === "profile" && profileForm && (
         <div style={{flex:1,overflowY:"auto",padding:"20px 20px 40px"}}>
@@ -1845,6 +2282,23 @@ export default function App() {
   const [defaultUserTab, setDefaultUserTab] = useState("home");
   const [showConsent, setShowConsent] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showGAD7, setShowGAD7] = useState(false);
+  const [showCrisisChain, setShowCrisisChain] = useState(false);
+  const [crisisConnection, setCrisisConnection] = useState(null);
+  const [lang, setLang] = useState(() => localStorage.getItem('mb_lang') || 'en');
+
+  function toggleLang() {
+    const next = lang === 'en' ? 'sw' : 'en';
+    setLang(next);
+    localStorage.setItem('mb_lang', next);
+  }
+
+  // Register service worker for PWA
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     if (authAPI.isLoggedIn()) {
@@ -1852,7 +2306,6 @@ export default function App() {
         if (data) {
           setUser(data);
           setScreen("home");
-          // Show consent once
           if (!localStorage.getItem('mb_consent') && data.role !== 'therapist' && data.role !== 'admin') {
             setShowConsent(true);
           }
@@ -1865,12 +2318,17 @@ export default function App() {
   function handleConsentAccept() {
     localStorage.setItem('mb_consent', '1');
     setShowConsent(false);
-    // Check if we should show onboarding (only for regular users)
     if (user?.role !== 'therapist' && user?.role !== 'admin') {
       wellbeingAPI.getAssessments().then(a => {
         if (!Array.isArray(a) || a.length === 0) setShowOnboarding(true);
       });
     }
+  }
+
+  function handleOnboardingComplete(score) {
+    setShowOnboarding(false);
+    // After PHQ-9, offer GAD-7
+    setShowGAD7(true);
   }
 
   function handleLogout() { authAPI.logout(); setUser(null); setScreen("login"); }
@@ -1886,33 +2344,55 @@ export default function App() {
   if (screen === "login")    return <LoginScreen    onLogin={u => { setUser(u); setScreen("home"); }} onGoRegister={() => setScreen("register")}/>;
 
   if (screen === "module" && activeModule) {
-    return <ChatModule
-      mod={activeModule} user={user}
-      onBack={() => { setActiveModule(null); setScreen("home"); }}
-      onOpenTherapists={() => { setDefaultUserTab("therapists"); setActiveModule(null); setScreen("home"); }}
-    />;
+    return (
+      <LangCtx.Provider value={lang}>
+        <ChatModule
+          mod={activeModule} user={user}
+          onBack={() => { setActiveModule(null); setScreen("home"); }}
+          onOpenTherapists={() => { setDefaultUserTab("therapists"); setActiveModule(null); setScreen("home"); }}
+        />
+      </LangCtx.Provider>
+    );
   }
 
   if (screen === "home") {
     if (user?.role === "therapist" || user?.role === "admin") {
-      return <TherapistDashboard user={user} onLogout={handleLogout}/>;
+      return (
+        <LangCtx.Provider value={lang}>
+          <TherapistDashboard user={user} onLogout={handleLogout}/>
+        </LangCtx.Provider>
+      );
     }
     return (
-      <>
+      <LangCtx.Provider value={lang}>
         {showConsent && <ConsentModal onAccept={handleConsentAccept}/>}
         {!showConsent && showOnboarding && (
           <OnboardingModal
-            onComplete={(score, severity) => { setShowOnboarding(false); }}
+            onComplete={handleOnboardingComplete}
             onSkip={() => setShowOnboarding(false)}
+          />
+        )}
+        {!showConsent && !showOnboarding && showGAD7 && (
+          <GAD7Modal
+            onComplete={() => setShowGAD7(false)}
+            onSkip={() => setShowGAD7(false)}
+          />
+        )}
+        {showCrisisChain && (
+          <CrisisChainModal
+            onClose={() => setShowCrisisChain(false)}
+            connectedTherapist={crisisConnection}
           />
         )}
         <UserDashboard
           user={user}
           initialTab={defaultUserTab}
+          lang={lang}
+          onLangToggle={toggleLang}
           onSelectModule={mod => { setDefaultUserTab("home"); setActiveModule(mod); setScreen("module"); }}
           onLogout={handleLogout}
         />
-      </>
+      </LangCtx.Provider>
     );
   }
 
